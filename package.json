@@ -1,0 +1,17 @@
+{
+  "name": "poetry-cards",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "古韵抽卡 - 单页 Web 应用，从精选古诗词随机抽卡",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "serve": "npx --yes http-server . -p 8080 -c-1",
+    "validate-data": "node scripts/validate-data.js"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0",
+    "jsdom": "^25.0.0"
+  }
+}
