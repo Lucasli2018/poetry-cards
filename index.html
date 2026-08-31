@@ -4,37 +4,49 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>古韵抽卡 · Poetry Cards</title>
+  <meta name="description" content="单页古诗词抽卡 · 诗泉在线 · 国风宣纸">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <header class="pc-header">
     <h1>古韵抽卡</h1>
-    <div class="pc-subtitle">一签一诗 · 国风宣纸</div>
+    <div class="pc-subtitle">诗泉在线 · 一签一诗</div>
   </header>
 
-  <section class="pc-controls">
-    <select id="pc-category" class="pc-select" aria-label="分类筛选">
-      <option value="all">全部</option>
-    </select>
-    <button id="pc-draw" class="pc-btn-primary">抽 一 签</button>
+  <section class="pc-controls" aria-label="筛选">
+    <div class="pc-filter-row">
+      <label class="pc-filter-label" for="pc-type">体裁</label>
+      <select id="pc-type" class="pc-select" aria-label="体裁筛选">
+        <option value="all">不限</option>
+      </select>
+    </div>
+    <div class="pc-filter-row">
+      <label class="pc-filter-label" for="pc-dynasty">朝代</label>
+      <select id="pc-dynasty" class="pc-select" aria-label="朝代筛选">
+        <option value="all">不限</option>
+      </select>
+    </div>
+    <button id="pc-draw" class="pc-btn-primary" aria-label="抽一签" type="button">
+      抽 一 签
+    </button>
   </section>
 
-  <section class="pc-card-slot" id="pc-card-slot">
-    <p style="color:var(--ink-soft)">点击「抽一签」开启你的诗词之旅</p>
+  <section class="pc-card-slot" id="pc-card-slot" aria-live="polite">
+    <p class="pc-empty">点击「抽一签」开启你的诗词之旅</p>
   </section>
 
-  <section class="pc-gallery-section">
+  <section class="pc-gallery-section" aria-label="抽取历史">
     <div class="pc-section-header">
       <h3>抽到的签</h3>
-      <span>
+      <span class="pc-section-meta">
         <span id="pc-gallery-count">共 0 张</span>
-        <button id="pc-clear" class="pc-link-btn" style="margin-left:12px">清空历史</button>
+        <button id="pc-clear" class="pc-link-btn" type="button">清空历史</button>
       </span>
     </div>
     <div id="pc-gallery" class="pc-gallery"></div>
   </section>
 
-  <section class="pc-gallery-section">
+  <section class="pc-gallery-section" aria-label="收藏夹">
     <div class="pc-section-header">
       <h3>收藏夹</h3>
     </div>
@@ -42,8 +54,8 @@
   </section>
 
   <footer class="pc-footer">
-    数据来源 <a href="https://gitee.com/li-luoqiang/chinese-poetry" target="_blank" rel="noopener">chinese-poetry</a>
-    · 单页 Web · MIT
+    数据来源 <a href="https://poetry.palemoky.com/" target="_blank" rel="noopener">诗泉 API</a>
+    · 37 万+首 · 单页 Web · MIT
   </footer>
 
   <script type="module" src="./src/main.js"></script>

@@ -1,22 +1,25 @@
 # 古韵抽卡 (Poetry Cards)
 
 > 单页 Web 应用，从精选古诗词随机抽卡，国风宣纸视觉。
+> **v2.0** · 零外部依赖 · 数据在线 · 多源图片守护
 
-## 预览
+## 数据源
 
-抽一签，得一诗。原文 / 作者 / 朝代 / 译文 / 作者简介全在卡片内，可点击卡片查看详情、复制全文、加入收藏。
+[诗泉](https://poetry.palemoky.com/) 免费开源古诗词 API，提供 37 万+首古诗词、1.3 万+位诗人、11 个朝代、17 种体裁的在线随机检索。
 
 ## 功能
 
-- 🎴 随机抽卡，含「避免短期重复」策略
-- 📜 六分类筛选：唐诗精选 / 宋词精选 / 小学 / 初中 / 高中 / 诗经
-- 🖼️ 卷轴卡片 + 朱砂印章，国风宣纸视觉
-- 📖 详情弹窗：原文 + 译文 + 作者简介
+- 🎴 在线随机抽卡（来自诗泉 API，37 万+首）
+- 🏷️ **体裁筛选**：不限 / 唐诗 / 五言绝句 / 七言绝句 / 五言律诗 / 七言律诗 / 五言古诗 / 七言古诗 / 乐府诗 / 宋词 / 五代词 / 元曲 / 蒙学 / 诗经 / 论语 / 楚辞 / 四书五经（共 17 类）
+- 🏯 **朝代筛选**：不限 / 先秦 / 两汉 / 魏晋 / 南北朝 / 隋 / 唐 / 五代 / 宋 / 元 / 清 / 其他（共 11 朝）
+- 🖼️ **卡片背景图**：Unsplash Source 在线图 + Picsum 兜底
+- 🃏 卷轴卡片 + 朱砂印章
+- 📖 详情弹窗：原文 + 作者 + 朝代 + 体裁
 - ⭐ 收藏夹独立存储
 - 📋 一键复制全文到剪贴板
 - 🕘 抽取历史永久保留（localStorage），横向滚动画廊
 - 🗑️ 清空历史带二次确认
-- 📱 移动端响应式（≤375px 不破版）
+- 📱 移动端响应式（≤480px 不破版）
 
 ## 启动
 
@@ -27,104 +30,72 @@
 ### 本地开发
 
 ```bash
-npm install
-npm run serve    # http://localhost:8080
-npm test         # 28 个测试用例
-npm run validate-data  # 校验 poetry.json
+npx --yes http-server . -p 8080 -c-1
+# 浏览器访问 http://localhost:8080
 ```
 
-## 数据源
+## 技术栈
 
-基于 https://gitee.com/li-luoqiang/chinese-poetry 公开数据集，内置精选 ~93 首（v1.0），按计划后续扩充至 ~500 首。
-
-数据格式：
-
-```json
-{
-  "meta": { "version": "1.0", "count": 93, "dynasty": ["先秦", "唐", "宋"] },
-  "poems": [{
-    "id": "tang-li-bai-jingyesi",
-    "title": "静夜思",
-    "author": "李白",
-    "dynasty": "唐",
-    "category": "小学古诗",
-    "content": ["床前明月光", "..."],
-    "translate": "...",
-    "authorBio": "...",
-    "tags": ["思乡"]
-  }]
-}
-```
+- **零依赖**：HTML + 原生 ES Modules + 原生 CSS，零运行时依赖，零 devDependencies
+- 无 `package.json`、无 npm、无构建步骤
+- 仅 3 个文件：`index.html` + `styles.css` + `src/main.js`
 
 ## 架构
 
 ```
 poetry-cards/
 ├── index.html              # 单页入口
-├── styles.css              # 国风样式
-├── src/
-│   ├── main.js             # 启动 + 事件装配
-│   ├── data.js             # 加载 poetry.json
-│   ├── store.js            # localStorage 封装
-│   ├── filter.js           # 分类筛选
-│   ├── draw.js             # 随机抽卡
-│   ├── card.js             # 卡片组件
-│   ├── render.js           # 画廊/详情渲染
-│   ├── ui.js               # 弹窗/Toast/复制
-│   └── utils.js            # 工具方法
-├── data/poetry.json        # 精选数据
-├── tests/                  # 28 测试
-└── scripts/validate-data.js
+├── styles.css              # 国风宣纸样式（卡片背景图支持）
+└── src/
+    └── main.js             # 全部逻辑（约 380 行）
 ```
 
-零运行时依赖（仅 `vitest` + `jsdom` 作为 devDependency）。
+### 数据流
+
+```
+1. 加载元数据：GET /api/types、/api/dynasties  → 填充分类下拉
+2. 抽卡：GET /api/poems/random（并发6）→ 客户端按 type/dynasty 过滤 → 内存池
+3. 用户点 [抽一签] → 从池中随机 → 显示卡片
+4. 后台图片：Unsplash Source → Picsum → 失败回退（宣纸底色）
+```
+
+### 关键策略
+
+- **客户端过滤**：诗泉 API 无服务端过滤能力，先全库随机再按用户筛选条件过滤
+- **池化抽卡**：首抽拉 40 首建立池子，抽中后从池中移除，后台静默补池
+- **去重**：所有已抽过的 poem id 存入 `seenIds` Set，永远不会重复
+- **图片多源**：Unsplash Source（4.5s 超时）→ Picsum（4.5s 超时）→ 纯色兜底
 
 ## 部署到 Gitee Pages
 
-```bash
-# 初始化仓库后
-git remote add origin git@gitee.com:li-luoqiang/poetry-cards.git
-git push -u origin master
-# Gitee 仓库页 → 服务 → Gitee Pages → 启动
-```
+仓库：`https://gitee.com/li-luoqiang/poetry-cards`
 
-入口即 `index.html`。
+1. Gitee 仓库页 → 服务 → Gitee Pages
+2. 部署分支：`master`
+3. 部署目录：`/`（根目录）
+4. 启动
 
-## 测试
-
-```bash
-npm test
-```
-
-输出：
-
-```
- ✓ tests/utils.test.js (4 tests)
- ✓ tests/store.test.js (7 tests)
- ✓ tests/filter.test.js (6 tests)
- ✓ tests/draw.test.js (6 tests)
- ✓ tests/render.test.js (5 tests)
-
- Test Files  5 passed (5)
-      Tests  28 passed (28)
-```
+在线地址：`https://li-luoqiang.gitee.io/poetry-cards`
 
 ## 验收清单
 
 - [x] 双击 `index.html` 在 Chrome/Edge 即玩
+- [x] 零 npm 依赖，无 `package.json`
+- [x] 首屏 < 30 KB（HTML + CSS + JS）
+- [x] 在线随机抽卡（诗泉 API）
+- [x] 17 分类 + 11 朝代双维筛选
+- [x] 客户端过滤生效
+- [x] 图片多源守护（Unsplash + Picsum + 兜底）
 - [x] 抽卡翻牌动画流畅
 - [x] 历史永久保留（localStorage）
-- [x] 分类筛选生效
-- [x] 译文/简介可展开
-- [x] 复制全文到剪贴板
 - [x] 收藏夹独立面板
+- [x] 复制全文到剪贴板
 - [x] localStorage 异常内存兜底
 - [x] 移动端 480px 不破版
-- [x] vitest 28 用例全绿
-- [ ] Gitee Pages 部署
+- [ ] Gitee Pages 部署（待启用）
 
 ## 许可
 
 MIT
 
-数据来源：[chinese-poetry](https://gitee.com/li-luoqiang/chinese-poetry)，公开数据集。
+数据来源：[诗泉](https://poetry.palemoky.com/)，公开免费 API。
