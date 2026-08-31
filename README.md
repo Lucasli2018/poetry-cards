@@ -35,7 +35,7 @@ npm run validate-data  # 校验 poetry.json
 
 ## 数据源
 
-基于 [chinese-poetry](https://gitee.com/li-luoqiang/chinese-poetry) 公开数据集，内置精选 ~93 首（v1.0），按计划后续扩充至 ~500 首。
+基于 https://gitee.com/li-luoqiang/chinese-poetry 公开数据集，内置精选 ~93 首（v1.0），按计划后续扩充至 ~500 首。
 
 数据格式：
 
@@ -97,6 +97,7 @@ npm test
 ```
 
 输出：
+
 ```
  ✓ tests/utils.test.js (4 tests)
  ✓ tests/store.test.js (7 tests)
