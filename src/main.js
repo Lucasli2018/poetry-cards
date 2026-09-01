@@ -16,6 +16,8 @@ import { composeCard, downloadCard, shareCard } from './cards.js';
 import { createHistoryStore } from './store/history.js';
 import { createStatsStore } from './store/stats.js';
 import { createFavoritesStore } from './store/favorites.js';
+import { createMemoryPanel } from './ui/memory-panel.js';
+import { renderFavorites, renderHistory, renderStats } from './ui/renderers.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 // ── 本地优先模式（默认开启，即「经典诗词」） ─────────
@@ -42,6 +44,7 @@ const els = {
   recoverBtn: $('pc-recover'),
   srcNote:    $('pc-source-note'),
   localFirstBtn: $('pc-local-first'),
+  memoryOpenBtn: $('pc-memory-open'),
 };
 
 // ── 存储（localStorage 不可用时降级内存） ─────────────────
@@ -80,6 +83,7 @@ let _lastClickAt = 0;
 let history = null;
 let stats = null;
 let favorites = null;
+let memoryPanel = null;
 
 // ── 工具 ──────────────────────────────────────────────────
 function escapeHtml(s) {
@@ -442,6 +446,23 @@ function toggleFavorite() {
   toast(r.favorited ? `已收藏《${curPoem.title || '无题'}》` : '已取消收藏');
 }
 
+// ── 记忆面板刷新 ─────────────────────────────────────────
+// 把三个 store 的快照拼成一个对象,字段以 tab 名命名(favorites/history/stats),
+// renderers 按需读取对应字段。这样既不污染命名空间,也方便测试注入。
+function refreshMemoryPanel() {
+  if (!memoryPanel || !favorites || !history || !stats) return;
+  memoryPanel.update({
+    favorites: { items: favorites.list() },
+    history:   { items: history.list() },
+    stats: {
+      totalDraws:   stats.get().totalDraws,
+      todayDraws:   stats.get().todayDraws,
+      topDynasties: stats.topDynasties(5),
+      topImagery:   stats.topImagery(5),
+    },
+  });
+}
+
 // ── 主题 ──────────────────────────────────────────────────
 const THEME_ORDER = ['auto', 'light', 'dark'];
 function applyTheme(mode) {
@@ -510,6 +531,24 @@ async function init() {
   history = createHistoryStore(ls);
   stats = createStatsStore(ls);
   favorites = createFavoritesStore(ls);
+
+  // v3.1 记忆面板:三个 tab 共享 modal
+  memoryPanel = createMemoryPanel();
+  memoryPanel.mount(document.body);
+  memoryPanel.registerRenderer('favorites', (snap) => renderFavorites(snap, {
+    onRemove: (id) => { favorites.remove(id); refreshMemoryPanel(); toast('已取消收藏'); },
+    onClear:  ()    => { favorites.clear();  refreshMemoryPanel(); toast('已清空收藏'); },
+  }));
+  memoryPanel.registerRenderer('history', (snap) => renderHistory(snap, {
+    onClear:  ()    => { history.clear();    refreshMemoryPanel(); toast('已清空历史'); },
+  }));
+  memoryPanel.registerRenderer('stats', (snap) => renderStats(snap, {
+    onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已重置统计'); },
+  }));
+  els.memoryOpenBtn?.addEventListener('click', () => {
+    refreshMemoryPanel();
+    memoryPanel.open(memoryPanel.currentTab);
+  });
 
   // 预载本地兜底库（首屏前就绪，保证「本地优先」立即可用）
   await loadLocalPoems();

@@ -258,14 +258,18 @@ function throws(fn, ErrorClass, label) {
   history.push(localPoem);
   eq(history.size(), 2, 'history: push 本地诗也累加');
 
-  // 滚动队列:连推 200 条只保留 200
-  for (let i = 0; i < 200; i++) history.push({ id: i, title: 't' + i, content: ['x'] });
+  // 滚动队列:连推 200 条只保留 200(每条间隔 1ms 保证时间戳单调)
+  for (let i = 0; i < 200; i++) {
+    history.push({ id: i, title: 't' + i, content: ['x'] });
+    await new Promise((r) => setTimeout(r, 1));
+  }
   eq(history.size(), 200, 'history: 容量上限 200');
 
   // 再 push 一条,弹出最旧
+  await new Promise((r) => setTimeout(r, 2));
   history.push({ id: 999, title: 'newest', content: ['x'] });
   eq(history.size(), 200, 'history: 滚动后仍是 200');
-  eq(history.list()[0].title, 'newest', 'history: 最新在前');
+  eq(history.list()[0].id, 999, 'history: 最新在前(id=999)');
 
   // clear
   history.clear();

@@ -36,12 +36,18 @@ await checkImport('store/schema.js',     `${base}/src/store/schema.js`);
 const statsMod     = await checkImport('store/stats.js',     `${base}/src/store/stats.js`);
 const historyMod   = await checkImport('store/history.js',   `${base}/src/store/history.js`);
 const favoritesMod = await checkImport('store/favorites.js', `${base}/src/store/favorites.js`);
+const panelMod     = await checkImport('ui/memory-panel.js', `${base}/src/ui/memory-panel.js`);
+const renderersMod = await checkImport('ui/renderers.js',    `${base}/src/ui/renderers.js`);
 
 // 关键符号存在性
 const required = [
   ['stats.createStatsStore',     statsMod?.createStatsStore],
   ['history.createHistoryStore', historyMod?.createHistoryStore],
   ['favorites.createFavoritesStore', favoritesMod?.createFavoritesStore],
+  ['panel.createMemoryPanel',    panelMod?.createMemoryPanel],
+  ['renderers.renderFavorites',  renderersMod?.renderFavorites],
+  ['renderers.renderHistory',    renderersMod?.renderHistory],
+  ['renderers.renderStats',      renderersMod?.renderStats],
 ];
 for (const [label, v] of required) {
   if (typeof v === 'function') { ok.push(label); console.log(`  ✓ ${label}`); }
