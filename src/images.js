@@ -130,13 +130,17 @@ function extractThemes(poem) {
 
 /**
  * 为 Pollinations AI 生成英文提示词。
+ * 风格统一偏向「古代中国画」：水墨/青绿山水、宋人山水意境、低饱和、留白。
  */
 export function poemPrompt(poem) {
   const themes = extractThemes(poem);
   const scenes = themes.length
     ? themes.map((k) => PROMPT_WORDS[k] || k).join(', ')
     : 'serene chinese landscape';
-  return `chinese classical poetry scenery, ${scenes}, peaceful artistic landscape, high quality`;
+  // 古代风格前缀 + 场景 + 古画风格后缀
+  return `ancient Chinese traditional painting, ${scenes}, classical Song dynasty landscape art style, ` +
+         `traditional ink wash and mineral-green shanshui, serene, elegant, muted earth tones, ` +
+         `fine brushwork, masterpiece`;
 }
 
 /**
