@@ -360,21 +360,23 @@ body {
   to   { transform: translateX(100%); }
 }
 
-/* ── 模式切换（本地优先） ─────────────────────────────── */
-.pc-mode-row {
+/* ── 头部按钮组（自动/本地优先） ───────────────────────── */
+.pc-header-actions {
+  flex: none;
   display: flex;
-  justify-content: flex-end;
-  margin-top: 18px;
+  align-items: flex-start;
+  gap: 10px;
 }
-.pc-btn--toggle {
+.pc-header-actions .pc-btn--toggle,
+.pc-header-actions .pc-theme-btn {
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 16px;
+  padding: 7px 14px;
   font-family: var(--font-sans);
-  font-size: 12.5px;
-  letter-spacing: .08em;
+  font-size: 12px;
+  letter-spacing: .06em;
   color: var(--sub);
   background: var(--card);
   border: 1px solid var(--line);
@@ -383,17 +385,18 @@ body {
   box-shadow: var(--shadow-sm);
   transition: transform .18s ease, border-color .18s ease, color .18s ease, background-color .18s ease, box-shadow .18s ease;
 }
-.pc-btn--toggle:hover {
+.pc-header-actions .pc-btn--toggle:hover,
+.pc-header-actions .pc-theme-btn:hover {
   transform: translateY(-1px);
   border-color: var(--accent);
   color: var(--accent);
 }
-.pc-btn--toggle.is-on {
+.pc-header-actions .pc-btn--toggle.is-on {
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
 }
-.pc-btn--toggle.is-on:hover {
+.pc-header-actions .pc-btn--toggle.is-on:hover {
   color: #fff;
   background: var(--accent-deep);
   border-color: var(--accent-deep);

@@ -24,7 +24,10 @@
         <h1 class="pc-brand">古韵抽卡</h1>
         <p class="pc-tagline">一图一诗 · 且听风吟</p>
       </div>
-      <button id="pc-theme-toggle" class="pc-theme-btn" type="button" title="切换主题">自动</button>
+      <div class="pc-header-actions">
+        <button id="pc-local-first" class="pc-btn pc-btn--toggle pc-btn--header" type="button" aria-pressed="false" title="开启后优先使用本地诗词库（离线可用）">本地优先</button>
+        <button id="pc-theme-toggle" class="pc-theme-btn" type="button" title="切换主题">自动</button>
+      </div>
     </header>
 
     <div id="pc-degraded" class="pc-degraded" role="alert">
@@ -35,13 +38,6 @@
     <main class="pc-main">
       <!-- 明信片 / 骨架屏 -->
       <section id="pc-stage" class="pc-stage" aria-live="polite"></section>
-
-      <!-- 模式切换：本地优先 -->
-      <div class="pc-mode-row">
-        <button id="pc-local-first" class="pc-btn pc-btn--toggle" type="button" aria-pressed="false" title="开启后优先使用本地诗词库（离线可用）">
-          本地优先
-        </button>
-      </div>
 
       <!-- 操作区 -->
       <div class="pc-actions">
