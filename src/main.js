@@ -1,30 +1,32 @@
 // =============================================================
-// 古韵抽卡 v2.1 · 零依赖 · 诗泉在线
-// 令牌桶主动限流 + 熔断 + 指数退避(全抖动) + 显式失败/本地降级 + 骨架屏
+// 古韵抽卡 v2.2 · 零依赖 · 诗泉在线
+// 单次 random + 等待返回 + 限流/熔断/降级 + 搜索/统计/PWA
 // API: https://poetry.palemoky.com
 // =============================================================
 
 import { apiRequest, ApiError, resetBreaker } from './api.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
-const FETCH_BATCH = 3;          // 每轮并发随机请求数（令牌桶另限同时在途 ≤2）
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ── DOM 引用 ───────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 const els = {
-  type:     $('pc-type'),
-  dynasty:  $('pc-dynasty'),
-  drawBtn:  $('pc-draw'),
-  slot:     $('pc-card-slot'),
-  gallery:  $('pc-gallery'),
-  gCount:   $('pc-gallery-count'),
-  clear:    $('pc-clear'),
-  favPanel: $('pc-favorites-panel'),
+  typeChips:     $('pc-type-chips'),
+  dynastyChips:  $('pc-dynasty-chips'),
+  drawBtn:       $('pc-draw'),
+  slot:          $('pc-card-slot'),
+  gallery:       $('pc-gallery'),
+  gCount:        $('pc-gallery-count'),
+  clear:         $('pc-clear'),
+  favPanel:      $('pc-favorites-panel'),
+  searchInput:   $('pc-search'),
+  statsPanel:    $('pc-stats'),
+  themeToggle:   $('pc-theme-toggle'),
 };
 
 // ── 存储 ───────────────────────────────────────────────────
-const LS_KEYS = { history: 'pc_v2_history', favs: 'pc_v2_favs', filters: 'pc_v2_filters' };
+const LS_KEYS = { history: 'pc_v2_history', favs: 'pc_v2_favs', filters: 'pc_v2_filters', theme: 'pc_v2_theme' };
 const memFallback = new Map();
 const memLS = {
   getItem: k => memFallback.has(k) ? memFallback.get(k) : null,
@@ -55,6 +57,8 @@ const store = {
   saveFavs: (set) => saveJSON(LS_KEYS.favs, [...set]),
   filters: () => loadJSON(LS_KEYS.filters, { type: 'all', dynasty: 'all' }),
   saveFilters: (f) => saveJSON(LS_KEYS.filters, f),
+  theme: () => ls.getItem(LS_KEYS.theme) || 'auto',
+  saveTheme: (t) => { try { ls.setItem(LS_KEYS.theme, t); } catch {} },
 };
 
 // ── API 调用（统一请求层：令牌桶 + 退避 + 熔断） ──────────
@@ -69,22 +73,22 @@ async function randomPoem() {
   return await apiRequest('/api/poems/random', { maxRetries: 2 });
 }
 
-// ── 抽卡池（客户端过滤） ──────────────────────────────────
-const pool = {
-  items: [],
-  seenIds: new Set(),
+// ── 运行状态 ──────────────────────────────────────────────
+const state = {
   typeFilter: 'all',
   dynastyFilter: 'all',
-  inflight: false,
-  usingLocal: false,   // 是否已切换到本地兜底库
+  appMode: 'online',   // online | degraded
+  drawing: false,
 };
 
-// 本地内置诗词库（API 限流 / 不可用时启用）
 let localPoems = [];
+let typesList = [];
+let dynastiesList = [];
+const allKnownPoems = new Map(); // id -> poem（抽到的、搜索到的、收藏的）
+let currentPoem = null;
+let favs = store.favs();
 
-// ── 运行状态：online | degraded ──────────────────────────
-// degraded = 诗泉接口不可用（限流/离线/错误），已切换本地库但仍可抽卡
-let appMode = 'online';
+// ── 降级横幅 ──────────────────────────────────────────────
 function degradedBannerEl() { return document.getElementById('pc-degraded'); }
 function showDegradedBanner(kind) {
   const el = degradedBannerEl();
@@ -94,17 +98,16 @@ function showDegradedBanner(kind) {
     : '诗泉接口暂不可用（限流/错误），已切换本地诗词库（70 首）';
   el.querySelector('.pc-degraded-msg').textContent = '⚠ ' + msg;
   el.classList.add('pc-degraded--show');
-  if (appMode !== 'degraded') {
-    appMode = 'degraded';
+  if (state.appMode !== 'degraded') {
+    state.appMode = 'degraded';
     toast('请求失败，已降级到本地库，可点横幅「重试恢复」');
   }
 }
 function hideDegradedBanner() {
   const el = degradedBannerEl();
   if (el) el.classList.remove('pc-degraded--show');
-  if (appMode === 'degraded') appMode = 'online';
+  if (state.appMode === 'degraded') state.appMode = 'online';
 }
-// 「重试恢复」：复位熔断器并探测一次，成功则回到在线模式
 async function attemptRecover() {
   resetBreaker();
   try {
@@ -116,87 +119,23 @@ async function attemptRecover() {
   }
 }
 
+// ── 筛选逻辑 ──────────────────────────────────────────────
 function passesFilter(poem) {
-  if (pool.typeFilter !== 'all' && poem.type.id !== Number(pool.typeFilter)) return false;
-  if (pool.dynastyFilter !== 'all' && poem.dynasty.id !== Number(pool.dynastyFilter)) return false;
+  if (state.typeFilter !== 'all' && poem.type?.id !== Number(state.typeFilter)) return false;
+  if (state.dynastyFilter !== 'all' && poem.dynasty?.id !== Number(state.dynastyFilter)) return false;
   return true;
 }
 
-// 用本地库补齐抽卡池。优先匹配当前筛选，匹配不到则放宽筛选兜底，
-// 保证「抽卡永远能抽到东西」。返回本次新加入的数量。
-function fillFromLocal(targetSize) {
-  if (!localPoems.length) return 0;
-  const unseen = localPoems.filter(p => !pool.seenIds.has(p.id));
-  let candidates = unseen.filter(passesFilter);
-  if (candidates.length === 0) candidates = unseen; // 放宽：本地库兜底不限筛选
-  let added = 0;
-  for (const p of candidates) {
-    if (pool.items.length >= targetSize) break;
-    if (pool.items.some(it => it.id === p.id)) continue;
-    pool.seenIds.add(p.id);
-    pool.items.push(p);
-    added++;
+function pickLocalOne(preferUnseen = true) {
+  if (!localPoems.length) return null;
+  let candidates = localPoems.filter(passesFilter);
+  if (preferUnseen) {
+    const unseen = candidates.filter(p => !allKnownPoems.has(p.id));
+    if (unseen.length) candidates = unseen;
   }
-  if (added > 0 && !pool.usingLocal) pool.usingLocal = true;
-  return added;
-}
-
-async function refillPool(targetSize = 40, maxRounds = 60) {
-  if (pool.inflight) return;
-  pool.inflight = true;
-  let emptyRounds = 0;
-  try {
-    let rounds = 0;
-    while (pool.items.length < targetSize && rounds < maxRounds) {
-      rounds++;
-      // 经统一请求层（令牌桶 + 退避 + 熔断）；失败时保留错误对象用于判断类型
-      const batch = await Promise.all(Array.from({ length: FETCH_BATCH }, async () => {
-        try { return await randomPoem(); }
-        catch (e) { return e; }
-      }));
-      let got = 0;
-      for (const p of batch) {
-        if (!p || p instanceof Error) continue;
-        got++;
-        if (pool.seenIds.has(p.id)) continue;
-        pool.seenIds.add(p.id);
-        if (passesFilter(p)) pool.items.push(p);
-      }
-      if (got > 0) {
-        // 拿到数据 → 若此前处于降级态，尝试自动恢复在线
-        if (appMode === 'degraded') { hideDegradedBanner(); toast('诗泉接口已恢复'); }
-        emptyRounds = 0;
-      } else {
-        // 本轮全部失败（很可能 429 / 离线）
-        emptyRounds++;
-        if (emptyRounds >= 2) {
-          const err = batch.find(x => x instanceof Error);
-          const kind = (!navigator.onLine || (err && err.kind === 'network')) ? 'offline' : 'api';
-          showDegradedBanner(kind);
-          fillFromLocal(targetSize);
-          break;
-        }
-        await sleep(1200 * emptyRounds);
-      }
-    }
-    // 池仍不足（如筛选过窄 + 本地也匹配不上）→ 兜底补齐并提示
-    if (pool.items.length < targetSize) {
-      if (appMode !== 'degraded') showDegradedBanner('api');
-      fillFromLocal(targetSize);
-    }
-  } finally {
-    pool.inflight = false;
-  }
-}
-
-function pickOne() {
-  if (pool.items.length === 0) return null;
-  return pool.items[Math.floor(Math.random() * pool.items.length)];
-}
-
-function consumeOne(picked) {
-  const idx = pool.items.findIndex(p => p.id === picked.id);
-  if (idx >= 0) pool.items.splice(idx, 1);
+  if (!candidates.length) candidates = localPoems.filter(p => !preferUnseen || !allKnownPoems.has(p.id));
+  if (!candidates.length) candidates = localPoems;
+  return candidates[Math.floor(Math.random() * candidates.length)] || null;
 }
 
 // ── 图片多源守护 ──────────────────────────────────────────
@@ -232,18 +171,8 @@ function preloadImage(url, timeout) {
     const img = new Image();
     let done = false;
     const timer = setTimeout(() => { if (!done) { done = true; resolve(false); } }, timeout);
-    img.onload = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(true);
-    };
-    img.onerror = () => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(false);
-    };
+    img.onload = () => { if (!done) { done = true; clearTimeout(timer); resolve(true); } };
+    img.onerror = () => { if (!done) { done = true; clearTimeout(timer); resolve(false); } };
     img.src = url;
   });
 }
@@ -255,13 +184,21 @@ function escapeHtml(s) {
   }[c]));
 }
 
+const ICONS = {
+  starFill: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`,
+  starEmpty: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.03 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`,
+  moon: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M9 2c-1.05 0-2.05.16-3 .46 1.69 1.24 2.79 3.25 2.79 5.54 0 3.87-3.13 7-7 7-1.06 0-2.06-.24-2.98-.66C.89 19.4 5.43 22 10.5 22 16.85 22 22 16.85 22 10.5S16.85-1 10.5-1c-.55 0-1.08.05-1.6.14.62.48 1.1 1.1 1.4 1.82z"/></svg>`,
+  sun: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm13-4.66l1.79-1.8 1.41 1.41-1.79 1.79-1.41-1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.87 0-7 3.13-7 7s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm0 12.5c-3.03 0-5.5-2.47-5.5-5.5s2.47-5.5 5.5-5.5 5.5 2.47 5.5 5.5-2.47 5.5-5.5 5.5z"/></svg>`,
+};
+
 function renderCardEl(poem, { mode = 'main' } = {}) {
   const el = document.createElement('article');
   el.className = 'pc-card' + (mode === 'gallery' ? ' pc-card--mini' : '');
   el.dataset.poemId = poem.id;
 
-  const sealHtml = mode === 'main'
-    ? '<div class="pc-card-seal">诗</div>' : '';
+  const sealHtml = mode === 'main' ? '<div class="pc-card-seal">诗</div>' : '';
   const linesHtml = mode === 'main'
     ? (poem.content || []).map(l => `<p class="pc-line">${escapeHtml(l)}</p>`).join('')
     : '';
@@ -286,18 +223,14 @@ function renderDetailEl(poem, isFav) {
     <div class="pc-author">${escapeHtml(poem.author?.name || '')} · ${escapeHtml(poem.dynasty?.name || '')} · ${escapeHtml(poem.type?.name || '')}</div>
     <div class="pc-content">${lines}</div>
     <div class="pc-actions">
-      <button class="pc-copy-btn" type="button">复制全文</button>
-      <button class="pc-fav-btn ${isFav ? 'is-fav' : ''}" type="button">${isFav ? '★ 已收藏' : '☆ 收藏'}</button>
+      <button class="pc-copy-btn" type="button">${ICONS.copy} 复制全文</button>
+      <button class="pc-fav-btn ${isFav ? 'is-fav' : ''}" type="button">${isFav ? ICONS.starFill : ICONS.starEmpty} ${isFav ? '已收藏' : '收藏'}</button>
     </div>
   `;
   return el;
 }
 
-// ── 历史 / 收藏 ──────────────────────────────────────────
-let favs = store.favs();
-let poemsById = new Map();
-let currentPoem = null;
-
+// ── 历史 / 收藏 / 搜索 / 统计 ─────────────────────────────
 function pushToHistory(poem) {
   const h = store.history();
   h.push({ id: poem.id, drawnAt: Date.now() });
@@ -310,7 +243,7 @@ function refreshGallery() {
   els.gallery.innerHTML = '';
   const sorted = [...h].sort((a, b) => b.drawnAt - a.drawnAt);
   for (const entry of sorted) {
-    const poem = poemsById.get(entry.id);
+    const poem = allKnownPoems.get(entry.id);
     if (!poem) continue;
     const el = renderCardEl(poem, { mode: 'gallery' });
     el.addEventListener('click', () => openDetail(poem));
@@ -329,17 +262,82 @@ function refreshFavorites() {
     const empty = document.createElement('p');
     empty.className = 'pc-empty';
     empty.style.fontSize = '13px';
-    empty.textContent = '暂无收藏，点详情里的☆收藏喜欢的诗';
+    empty.textContent = '暂无收藏，点详情里的星标收藏喜欢的诗';
     els.favPanel.appendChild(empty);
     return;
   }
   for (const id of ids) {
-    const poem = poemsById.get(id);
+    const poem = allKnownPoems.get(id);
     if (!poem) continue;
     const el = renderCardEl(poem, { mode: 'gallery' });
     el.addEventListener('click', () => openDetail(poem));
     els.favPanel.appendChild(el);
   }
+}
+
+function collectSearchIndex() {
+  const idx = new Map(allKnownPoems);
+  for (const p of localPoems) if (!idx.has(p.id)) idx.set(p.id, p);
+  return [...idx.values()];
+}
+
+function doSearch(query) {
+  const q = query.trim().toLowerCase();
+  const list = collectSearchIndex();
+  if (!q) return list;
+  return list.filter(p => {
+    const title = p.title || '';
+    const author = p.author?.name || '';
+    const dynasty = p.dynasty?.name || '';
+    const content = (p.content || []).join('');
+    return title.toLowerCase().includes(q)
+      || author.toLowerCase().includes(q)
+      || dynasty.toLowerCase().includes(q)
+      || content.toLowerCase().includes(q);
+  });
+}
+
+function renderSearchResults(poems) {
+  els.gallery.innerHTML = '';
+  for (const poem of poems) {
+    const el = renderCardEl(poem, { mode: 'gallery' });
+    el.addEventListener('click', () => openDetail(poem));
+    els.gallery.appendChild(el);
+  }
+  els.gCount.textContent = `找到 ${poems.length} 首`;
+}
+
+function refreshStats() {
+  if (!els.statsPanel) return;
+  const h = store.history();
+  const total = h.length;
+  const counts = new Map();
+  for (const entry of h) {
+    const poem = allKnownPoems.get(entry.id);
+    if (!poem) continue;
+    const name = poem.dynasty?.name || '未知';
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const max = sorted.length ? Math.max(...sorted.map(x => x[1])) : 1;
+
+  let barsHtml = '';
+  for (const [name, count] of sorted) {
+    const pct = Math.round((count / max) * 100);
+    barsHtml += `
+      <div class="pc-stat-bar">
+        <span class="pc-stat-label">${escapeHtml(name)}</span>
+        <div class="pc-stat-track"><div class="pc-stat-fill" style="width:${pct}%"></div></div>
+        <span class="pc-stat-num">${count}</span>
+      </div>`;
+  }
+  els.statsPanel.innerHTML = `
+    <div class="pc-stats-header">
+      <span>已抽 ${total} 签</span>
+      ${sorted.length ? '<span>朝代分布</span>' : ''}
+    </div>
+    ${barsHtml}
+  `;
 }
 
 // ── Toast / 弹窗 ─────────────────────────────────────────
@@ -395,7 +393,7 @@ function showSkeleton() {
 }
 
 async function showCard(poem) {
-  poemsById.set(poem.id, poem);
+  allKnownPoems.set(poem.id, poem);
   currentPoem = poem;
   els.slot.innerHTML = '';
   const card = renderCardEl(poem, { mode: 'main' });
@@ -410,37 +408,53 @@ async function showCard(poem) {
 }
 
 async function drawOnce() {
-  if (els.drawBtn.disabled) return;
+  if (state.drawing) return;
+  state.drawing = true;
   els.drawBtn.disabled = true;
-  const originalText = els.drawBtn.textContent;
-  els.drawBtn.textContent = '寻 诗 中';
+  const originalText = els.drawBtn.innerHTML;
+  els.drawBtn.innerHTML = `<span class="pc-spinner"></span>寻诗中`;
   showSkeleton();
   try {
-    if (pool.items.length === 0) {
-      await refillPool(40, 60);
+    let poem = null;
+    let fromApi = true;
+    try {
+      poem = await randomPoem();
+    } catch (e) {
+      console.warn('random failed', e);
+      poem = pickLocalOne(true);
+      fromApi = false;
+      if (poem) {
+        const kind = (!navigator.onLine || e.kind === 'network') ? 'offline' : 'api';
+        showDegradedBanner(kind);
+      } else {
+        toast('请求失败，请稍后重试');
+        els.slot.innerHTML = '<p class="pc-empty">请求失败，请稍后重试</p>';
+        return;
+      }
     }
-    let picked = pickOne();
-    if (!picked) {
-      await refillPool(80, 120);
-      picked = pickOne();
+
+    // 若 API 返回的诗不符合当前筛选，优先用本地库匹配筛选（仍只调了 1 次 random）
+    if (fromApi && !passesFilter(poem)) {
+      const local = pickLocalOne(true);
+      if (local) poem = local;
     }
-    if (!picked) {
-      toast('当前过滤无数据，请放宽筛选');
-      els.slot.innerHTML = '<p class="pc-empty">暂无符合条件的诗</p>';
-      return;
-    }
-    consumeOne(picked);
-    await showCard(picked);
-    pushToHistory(picked);
+
+    await showCard(poem);
+    pushToHistory(poem);
     refreshGallery();
-    if (pool.items.length < 20) refillPool(40, 60);
+    refreshStats();
+    if (fromApi && state.appMode === 'degraded') {
+      hideDegradedBanner();
+      toast('诗泉接口已恢复');
+    }
   } catch (e) {
     console.error(e);
     toast('请求失败，请稍后重试');
     els.slot.innerHTML = '<p class="pc-empty">请求失败，请稍后重试</p>';
   } finally {
+    state.drawing = false;
     els.drawBtn.disabled = false;
-    els.drawBtn.textContent = originalText;
+    els.drawBtn.innerHTML = originalText;
   }
 }
 
@@ -464,7 +478,7 @@ function openDetail(poem) {
     refreshFavorites();
     const newIsFav = favs.has(poem.id);
     const btn = node.querySelector('.pc-fav-btn');
-    btn.textContent = newIsFav ? '★ 已收藏' : '☆ 收藏';
+    btn.innerHTML = `${newIsFav ? ICONS.starFill : ICONS.starEmpty} ${newIsFav ? '已收藏' : '收藏'}`;
     btn.classList.toggle('is-fav', newIsFav);
   };
   showOverlay(node);
@@ -473,44 +487,102 @@ function openDetail(poem) {
   });
 }
 
-// ── 初始化 ───────────────────────────────────────────────
-function fillSelect(select, items, labelField) {
-  const opts = ['<option value="all">不限</option>'];
+// ── 筛选芯片 UI ───────────────────────────────────────────
+function renderChips(container, items, field, current) {
+  container.innerHTML = '';
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.className = 'pc-chip' + (current === 'all' ? ' is-active' : '');
+  allBtn.textContent = '不限';
+  allBtn.dataset.value = 'all';
+  allBtn.addEventListener('click', () => setFilter(field, 'all'));
+  container.appendChild(allBtn);
+
   for (const it of items) {
-    opts.push(`<option value="${it.id}">${escapeHtml(it[labelField])}</option>`);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pc-chip' + (String(current) === String(it.id) ? ' is-active' : '');
+    btn.textContent = it.name;
+    btn.dataset.value = String(it.id);
+    btn.addEventListener('click', () => setFilter(field, String(it.id)));
+    container.appendChild(btn);
   }
-  select.innerHTML = opts.join('');
 }
 
-// 元数据拉取失败时，用本地库的体裁 / 朝代目录兜底填下拉框
+function setFilter(field, value) {
+  if (field === 'type') state.typeFilter = value;
+  if (field === 'dynasty') state.dynastyFilter = value;
+  store.saveFilters({ type: state.typeFilter, dynasty: state.dynastyFilter });
+  renderChips(els.typeChips, typesList, 'type', state.typeFilter);
+  renderChips(els.dynastyChips, dynastiesList, 'dynasty', state.dynastyFilter);
+}
+
 function buildSelectsFromLocal() {
-  const types = [], dyn = [];
+  typesList = [];
+  dynastiesList = [];
   const tSeen = new Set(), dSeen = new Set();
   for (const p of localPoems) {
-    if (p.type && !tSeen.has(p.type.id)) { tSeen.add(p.type.id); types.push(p.type); }
-    if (p.dynasty && !dSeen.has(p.dynasty.id)) { dSeen.add(p.dynasty.id); dyn.push(p.dynasty); }
+    if (p.type && !tSeen.has(p.type.id)) { tSeen.add(p.type.id); typesList.push(p.type); }
+    if (p.dynasty && !dSeen.has(p.dynasty.id)) { dSeen.add(p.dynasty.id); dynastiesList.push(p.dynasty); }
   }
-  fillSelect(els.type, types, 'name');
-  fillSelect(els.dynasty, dyn, 'name');
+  renderChips(els.typeChips, typesList, 'type', state.typeFilter);
+  renderChips(els.dynastyChips, dynastiesList, 'dynasty', state.dynastyFilter);
 }
 
+// ── 暗色模式 ──────────────────────────────────────────────
+function applyTheme(mode) {
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = mode === 'dark' || (mode === 'auto' && prefersDark);
+  document.documentElement.classList.toggle('pc-dark', isDark);
+  if (els.themeToggle) {
+    els.themeToggle.innerHTML = isDark ? ICONS.moon : ICONS.sun;
+    els.themeToggle.setAttribute('aria-pressed', String(isDark));
+    els.themeToggle.title = mode === 'auto' ? '跟随系统' : (isDark ? '暗色模式' : '亮色模式');
+  }
+}
+function cycleTheme() {
+  const order = ['auto', 'light', 'dark'];
+  const current = store.theme();
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  store.saveTheme(next);
+  applyTheme(next);
+  toast(next === 'auto' ? '已跟随系统主题' : (next === 'dark' ? '已切换暗色' : '已切换亮色'));
+}
+
+// ── PWA ───────────────────────────────────────────────────
+function registerSW() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('SW registration failed', err);
+    });
+  }
+}
+
+// ── 初始化 ───────────────────────────────────────────────
 async function init() {
-  // 预载本地兜底诗词库（不影响首屏，失败时抽卡仍可走 API）
+  // 预载本地兜底诗词库
   try {
     const r = await fetch(LOCAL_POEMS_URL, { cache: 'no-cache' });
     if (r.ok) localPoems = await r.json();
   } catch { localPoems = []; }
 
-  const saved = store.filters();
-  pool.typeFilter = saved.type || 'all';
-  pool.dynastyFilter = saved.dynasty || 'all';
+  // 主题
+  applyTheme(store.theme());
+  if (els.themeToggle) els.themeToggle.addEventListener('click', cycleTheme);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.theme()));
 
+  // 筛选
+  const saved = store.filters();
+  state.typeFilter = saved.type || 'all';
+  state.dynastyFilter = saved.dynasty || 'all';
+
+  // 加载元数据
   try {
     const [types, dynasties] = await Promise.all([loadTypes(), loadDynasties()]);
-    fillSelect(els.type, types, 'name');
-    fillSelect(els.dynasty, dynasties, 'name');
-    if ([...els.type.options].some(o => o.value === pool.typeFilter)) els.type.value = pool.typeFilter;
-    if ([...els.dynasty.options].some(o => o.value === pool.dynastyFilter)) els.dynasty.value = pool.dynastyFilter;
+    typesList = types;
+    dynastiesList = dynasties;
+    renderChips(els.typeChips, typesList, 'type', state.typeFilter);
+    renderChips(els.dynastyChips, dynastiesList, 'dynasty', state.dynastyFilter);
   } catch (e) {
     console.error('元数据加载失败', e);
     if (localPoems.length) {
@@ -522,29 +594,46 @@ async function init() {
     }
   }
 
+  // 恢复已知诗库（历史 + 收藏）
+  for (const id of favs) allKnownPoems.set(id, null);
+  for (const entry of store.history()) allKnownPoems.set(entry.id, null);
+
+  // 事件绑定
   els.drawBtn.addEventListener('click', drawOnce);
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !e.repeat && !['INPUT','TEXTAREA','BUTTON'].includes(e.target.tagName)) {
+      e.preventDefault();
+      drawOnce();
+    }
+  });
   const recoverBtn = document.getElementById('pc-recover');
   if (recoverBtn) recoverBtn.addEventListener('click', attemptRecover);
-  els.type.addEventListener('change', () => {
-    pool.typeFilter = els.type.value;
-    pool.items = [];
-    store.saveFilters({ type: pool.typeFilter, dynasty: pool.dynastyFilter });
-  });
-  els.dynasty.addEventListener('change', () => {
-    pool.dynastyFilter = els.dynasty.value;
-    pool.items = [];
-    store.saveFilters({ type: pool.typeFilter, dynasty: pool.dynastyFilter });
-  });
   els.clear.addEventListener('click', () => {
     if (confirm('清空所有抽取历史？')) {
       store.saveHistory([]);
       refreshGallery();
+      refreshStats();
       toast('已清空历史');
     }
   });
 
+  // 搜索
+  if (els.searchInput) {
+    let t;
+    els.searchInput.addEventListener('input', (e) => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const q = e.target.value.trim();
+        if (q) renderSearchResults(doSearch(q));
+        else refreshGallery();
+      }, 180);
+    });
+  }
+
   refreshGallery();
   refreshFavorites();
+  refreshStats();
+  registerSW();
 }
 
 if (document.readyState === 'loading') {
