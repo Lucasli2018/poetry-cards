@@ -43,7 +43,7 @@ const dom2cvMod    = await checkImport('ui/dom-to-canvas.js', `${base}/src/ui/do
 
 // 关键符号存在性
 const required = [
-  ['stats.createFavoritesStatsStore', statsMod?.createFavoritesStatsStore],
+  ['stats.createStatsStore', statsMod?.createStatsStore],
   ['history.createHistoryStore', historyMod?.createHistoryStore],
   ['favorites.createFavoritesStore', favoritesMod?.createFavoritesStore],
   ['panel.createMemoryPanel',    panelMod?.createMemoryPanel],

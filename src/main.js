@@ -16,7 +16,7 @@ import { composeCard, downloadCard, shareCard } from './cards.js';
 // domToCanvas (v3.2.5 引入) 保留作为「未来 1:1 严格还原」路径;
 // 当前 onDownload / onShare 仍走 composeCard,稳定且已测通。
 import { createHistoryStore } from './store/history.js';
-import { createFavoritesStatsStore } from './store/stats.js';
+import { createStatsStore } from './store/stats.js';
 import { createFavoritesStore } from './store/favorites.js';
 import { createMemoryPanel } from './ui/memory-panel.js';
 import { renderFavorites, renderHistory, renderStats } from './ui/renderers.js';
@@ -397,10 +397,12 @@ async function drawNew() {
     curSource = source;
     renderPostcard(poem, url, source);
 
-    // v3.1 个性化记忆:成功渲染后写历史(失败/取消不写)
+    // v3.1 个性化记忆:成功渲染后写库(失败/取消不写)
     //   history.push 内部做 normalizePoem,任何字段缺失都能容错
-    // v3.2.5 stats 改为从 favorites 实时计算,不再写入
+    // v3.2.7 stats 双源:onDraw 累加 totalDraws/todayDraws;
+    //   朝代/意象 不在 onDraw 写入,从 favorites 实时算
     history?.push(poem);
+    stats?.onDraw(poem, extractThemes(poem));
 
     if (fromApi && degraded) hideDegraded();
   } catch (e) {
@@ -532,13 +534,15 @@ async function onImportBackup() {
 // renderers 按需读取对应字段。这样既不污染命名空间,也方便测试注入。
 function refreshMemoryPanel() {
   if (!memoryPanel || !favorites || !history || !stats) return;
+  const snap = stats.snapshot();
   memoryPanel.update({
     favorites: { items: favorites.list() },
     history:   { items: history.list() },
     stats: {
-      totalFavorites: stats.totalCount(),
-      topDynasties:   stats.topDynasties(5),
-      topImagery:     stats.topImagery(5),
+      totalDraws:   snap.totalDraws,
+      todayDraws:   snap.todayDraws,
+      topDynasties: snap.topDynasties,
+      topImagery:   snap.topImagery,
     },
   });
 }
@@ -617,8 +621,9 @@ async function init() {
   // v3.1 个性化记忆:实例化 history / favorites store(注入 ls 适配器)
   history = createHistoryStore(ls);
   favorites = createFavoritesStore(ls);
-  // v3.2.5 stats 改为 favoritesStats — 读收藏夹,不再单独写
-  stats = createFavoritesStatsStore(favorites);
+  // v3.2.7 stats 双源:totalDraws/todayDraws 走 statsMeta(累加),
+  //   topDynasties/topImagery 走 favorites 实时计算
+  stats = createStatsStore(ls, favorites);
 
   // v3.1 记忆面板:三个 tab 共享 modal
   memoryPanel = createMemoryPanel();
@@ -631,7 +636,7 @@ async function init() {
     onClear:  ()    => { history.clear();    refreshMemoryPanel(); toast('已清空历史'); },
   }));
   memoryPanel.registerRenderer('stats', (snap) => renderStats(snap, {
-    onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已清空收藏(统计同步重置)'); },
+    onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已重置统计'); },
     onExport: ()    => { onExportBackup(); },
     onImport: ()    => { onImportBackup(); },
   }));

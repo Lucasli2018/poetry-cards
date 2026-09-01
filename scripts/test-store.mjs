@@ -19,7 +19,7 @@ import {
 
 const DEFAULTS_FROM_SCHEMA = DEFAULTS.statsMeta();
 
-import { createFavoritesStatsStore } from '../src/store/stats.js';
+import { createStatsStore } from '../src/store/stats.js';
 import { createHistoryStore } from '../src/store/history.js';
 import { createFavoritesStore } from '../src/store/favorites.js';
 
@@ -188,52 +188,66 @@ function throws(fn, ErrorClass, label) {
 }
 
 // ───────────────────────────────────────────────────────────
-// 9. favoritesStats store(v3.2.5:从 favorites 实时计算,不再单独写)
+// 9. stats store(v3.2.7 双源:totalDraws/todayDraws 走 statsMeta,
+//               topDynasties/topImagery 走 favorites 实时计算)
 // ───────────────────────────────────────────────────────────
 {
   const mem = new Map();
   const ls = { getItem: (k) => (mem.has(k) ? mem.get(k) : null),
                setItem: (k, v) => mem.set(k, String(v)) };
   const fav = createFavoritesStore(ls);
-  const stats = createFavoritesStatsStore(fav);
+  const stats = createStatsStore(ls, fav);
 
-  // 初始(空收藏)
-  eq(stats.totalCount(), 0, 'stats: 初始 total=0');
+  // ① 初始(0 抽卡 + 0 收藏)
+  eq(stats.summary(), { totalDraws: 0, todayDraws: 0, todayKey: '' },
+    'stats: 初始 summary 全 0');
   eq(stats.topDynasties(3), [], 'stats: 初始 topDynasties 空');
+  eq(stats.snapshot().totalDraws, 0, 'stats: snapshot.totalDraws=0');
 
-  // 添加 1 首诗(本地结构,嵌套 dynasty)
+  // ② onDraw 只累加 total/today,朝代不入
+  stats.onDraw({ dynasty: '唐' }, ['moonlight']);
+  eq(stats.summary().totalDraws, 1, 'stats: onDraw → totalDraws=1');
+  eq(stats.summary().todayDraws, 1, 'stats: onDraw → todayDraws=1');
+  eq(stats.topDynasties(3), [], 'stats: 朝代仍空(因为没有收藏)');
+
+  // ③ 加 3 次抽卡
+  stats.onDraw({}, []);
+  stats.onDraw({}, []);
+  eq(stats.summary().totalDraws, 3, 'stats: 3 次抽卡 → total=3');
+
+  // ④ 加 2 个收藏(唐 / 宋 各一),朝代来自 favorites
   fav.add({ id: 900001, title: '登鹳雀楼', content: ['a'],
             author: { name: '王之涣' },
             dynasty: { name: '唐' },
             type: { name: '五言绝句' } });
-  eq(stats.totalCount(), 1, 'stats: 收藏 1 首 → total=1');
-  eq(stats.topDynasties(1), [{ key: '唐', count: 1 }], 'stats: 朝代=唐 count=1');
-
-  // 加 2 首诗泉结构
   fav.add({ id: 12345, title: '静夜思', content: ['a'],
             author: { name: '李白' },
             dynasty: { name: '唐' },
             type: { name: '五言绝句' } });
-  fav.add({ id: 67890, title: '登高', content: ['a'],
-            author: { name: '杜甫' },
-            dynasty: { name: '唐' },
-            type: { name: '七言律诗' } });
-  eq(stats.totalCount(), 3, 'stats: 收藏 3 首 → total=3');
-  eq(stats.topDynasties(1), [{ key: '唐', count: 3 }], 'stats: TOP1 count=3');
+  fav.add({ id: 88888, title: '水调歌头', content: ['a'],
+            author: { name: '苏轼' },
+            dynasty: { name: '宋' },
+            type: { name: '词' } });
+  eq(stats.topDynasties(2),
+    [{ key: '唐', count: 2 }, { key: '宋', count: 1 }],
+    'stats: 收藏 2 唐 1 宋 → TOP = 唐/宋');
 
-  // snapshot
+  // ⑤ snapshot 4 字段并存
   const snap = stats.snapshot();
-  eq(snap.totalFavorites, 3, 'stats: snapshot.totalFavorites');
-  eq(snap.dynastyCounter, { '唐': 3 }, 'stats: snapshot.dynastyCounter');
+  eq(snap.totalDraws, 3, 'stats: snapshot.totalDraws=3');
+  eq(snap.todayDraws, 3, 'stats: snapshot.todayDraws=3');
+  eq(snap.topDynasties[0].key, '唐', 'stats: snapshot.topDynasties[0] = 唐');
+  eq(Array.isArray(snap.topImagery), true, 'stats: snapshot.topImagery 是数组');
 
-  // 取消收藏,统计实时减少
+  // ⑥ 取消收藏,朝代实时减少,但 totalDraws 不变
   fav.remove(900001);
-  eq(stats.totalCount(), 2, 'stats: 取消 → total=2');
-  eq(stats.topDynasties(1)[0].count, 2, 'stats: 取消后 count=2');
+  eq(stats.topDynasties(2)[0].count, 1, 'stats: 取消 1 唐 → 唐 count=1');
+  eq(stats.summary().totalDraws, 3, 'stats: 取消收藏不影响 totalDraws');
 
-  // reset = 清空收藏
+  // ⑦ reset = 清零 statsMeta + 清空 favorites
   stats.reset();
-  eq(stats.totalCount(), 0, 'stats: reset 后 total=0');
+  eq(stats.summary(), { totalDraws: 0, todayDraws: 0, todayKey: '' },
+    'stats: reset 后 statsMeta 全 0');
   eq(fav.size(), 0, 'stats: reset 也清空 favorites');
 }
 
@@ -289,9 +303,10 @@ function throws(fn, ErrorClass, label) {
 // 11. 工厂校验
 // ───────────────────────────────────────────────────────────
 {
-  throws(() => createFavoritesStatsStore(null), TypeError, 'createFavoritesStatsStore(null) 抛错');
+  throws(() => createStatsStore(null, null), TypeError, 'createStatsStore(null, null) 抛错');
   throws(() => createHistoryStore(null), TypeError, 'createHistoryStore(null) 抛错');
-  throws(() => createFavoritesStatsStore({}), TypeError, 'createFavoritesStatsStore 缺 list 抛错');
+  throws(() => createStatsStore({}, null), TypeError, 'createStatsStore 缺 storage 抛错');
+  throws(() => createStatsStore({ getItem: () => null }, null), TypeError, 'createStatsStore 缺 favorites 抛错');
 }
 
 // ───────────────────────────────────────────────────────────
@@ -367,64 +382,44 @@ function throws(fn, ErrorClass, label) {
 }
 
 // ───────────────────────────────────────────────────────────
-// 13. favoritesStats:统计「收藏」数据(v3.2.5)
+// 13. stats 双源「独立性 + 同步」(v3.2.7)
+//     onDraw 只累加 totalDraws/todayDraws;
+//     收藏只影响 topDynasties/topImagery;两者互不污染
 // ───────────────────────────────────────────────────────────
 {
-  // 用 createFavoritesStore + createFavoritesStatsStore 真打通
   const mem = new Map();
   const ls = { getItem: (k) => (mem.has(k) ? mem.get(k) : null),
                setItem: (k, v) => mem.set(k, String(v)) };
   const fav = createFavoritesStore(ls);
-  const fStats = createFavoritesStatsStore(fav);
+  const stats = createStatsStore(ls, fav);
 
-  // 空收藏时
-  eq(fStats.totalCount(), 0, 'favStats: 空收藏 total=0');
-  eq(fStats.topDynasties(5), [], 'favStats: 空收藏 topDynasties=[]');
-  eq(fStats.snapshot().totalFavorites, 0, 'favStats: 空 snapshot.totalFavorites=0');
+  // 抽 5 次,收藏 0 首
+  for (let i = 0; i < 5; i++) stats.onDraw({ dynasty: '唐' }, []);
+  eq(stats.summary().totalDraws, 5, '独立: 抽卡 5 → total=5,无关收藏');
+  eq(stats.topDynasties(3), [], '独立: 0 收藏 → 朝代空(即使抽了 5 次唐)');
 
-  // 添加收藏:本地诗(嵌套 dynasty)
+  // 收藏 2 首(宋 1, 唐 1)
   fav.add({ id: 900001, title: '登鹳雀楼', content: ['a'],
-            author: { name: '王之涣' },
-            dynasty: { name: '唐' },
-            type: { name: '五言绝句' } });
-  fav.add({ id: 900002, title: '春晓', content: ['a'],
-            author: { name: '孟浩然' },
-            dynasty: { name: '唐' },
-            type: { name: '五言绝句' } });
-  // 诗泉结构
-  fav.add({ id: 12345, title: '静夜思', content: ['a'],
-            author: { name: '李白' },
-            dynasty: { name: '唐' },
-            type: { name: '五言绝句' } });
-  fav.add({ id: 67890, title: '登高', content: ['a'],
-            author: { name: '杜甫' },
-            dynasty: { name: '唐' },
-            type: { name: '七言律诗' } });
+            dynasty: { name: '唐' } });
+  fav.add({ id: 900066, title: '九歌·国殇', content: ['a'],
+            dynasty: { name: '宋' } });
+  const top = stats.topDynasties(5);
+  eq(top.length, 2, '同步: 2 个收藏 → 2 个朝代');
+  eq(top.find(x => x.key === '唐').count, 1, '同步: 唐 count=1');
+  eq(top.find(x => x.key === '宋').count, 1, '同步: 宋 count=1');
+  // totalDraws 仍然 5,没被收藏影响
+  eq(stats.summary().totalDraws, 5, '独立: 收藏后 totalDraws 仍=5');
 
-  // 总数=4
-  eq(fStats.totalCount(), 4, 'favStats: 4 个收藏 → totalCount=4');
-  const top = fStats.topDynasties(5);
-  eq(top[0].key, '唐', 'favStats: 朝代 TOP1 = 唐');
-  eq(top[0].count, 4, 'favStats: 朝代 TOP1 count=4');
+  // 取消所有收藏,朝代立即空,totalDraws 不变
+  fav.clear();
+  eq(stats.topDynasties(3), [], '同步: 清空收藏 → 朝代立即空');
+  eq(stats.summary().totalDraws, 5, '独立: 清空收藏不影响 totalDraws');
 
-  // 取消一个收藏,统计实时减少
-  fav.remove(900001);
-  eq(fStats.totalCount(), 3, 'favStats: 取消收藏 → total=3');
-  eq(fStats.topDynasties(5)[0].count, 3, 'favStats: 取消后 TOP count=3');
-
-  // snapshot
-  const snap = fStats.snapshot();
-  eq(snap.totalFavorites, 3, 'favStats: snapshot.totalFavorites');
-  eq(snap.dynastyCounter, { '唐': 3 }, 'favStats: snapshot.dynastyCounter');
-
-  // reset = 清空收藏
-  fStats.reset();
-  eq(fStats.totalCount(), 0, 'favStats: reset 后 totalCount=0');
-  eq(fav.size(), 0, 'favStats: reset = 清空 favorites');
-
-  // 防御:传非 favoritesStore 应抛 TypeError
-  throws(() => createFavoritesStatsStore(null), TypeError, 'favStats: null 抛 TypeError');
-  throws(() => createFavoritesStatsStore({}), TypeError, 'favStats: {} 抛 TypeError');
+  // reset = statsMeta 清零 + favorites 清空
+  stats.reset();
+  eq(stats.summary(), { totalDraws: 0, todayDraws: 0, todayKey: '' },
+    'reset: statsMeta 全 0');
+  eq(fav.size(), 0, 'reset: favorites 也清空');
 }
 
 // ───────────────────────────────────────────────────────────

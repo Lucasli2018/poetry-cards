@@ -139,7 +139,8 @@ const IMAGERY_LABELS = {
 
 export function renderStats(snapshot, actions = {}) {
   const m = snapshot?.stats || snapshot || {};
-  const total = m.totalFavorites || m.totalDraws || 0;     // v3.2.5:总数=收藏数
+  const totalDraws = m.totalDraws || 0;   // v3.2.7:累计抽卡(走 statsMeta,持久累加)
+  const todayDraws = m.todayDraws || 0;   // v3.2.7:今日抽卡(statsMeta,跨日归零)
   // 兜底:把缺失 / "[object Object]" / 非字符串 的 key 替换成「佚名」占位符
   const PLACEHOLDER = '佚名';
   const clean = (arr) => (arr || [])
@@ -153,17 +154,21 @@ export function renderStats(snapshot, actions = {}) {
 
   const wrap = el('div', 'pc-stats');
 
-  // 计数卡(单列,v3.2.5 只显示「收藏总数」)
+  // 计数卡(两列,累计 + 今日)
   const cards = el('div', 'pc-stats-cards');
   cards.innerHTML = `
-    <div class="pc-stat-card pc-stat-card--solo">
-      <div class="pc-stat-num">${total}</div>
-      <div class="pc-stat-label">收藏总数</div>
+    <div class="pc-stat-card">
+      <div class="pc-stat-num">${totalDraws}</div>
+      <div class="pc-stat-label">累计抽卡</div>
+    </div>
+    <div class="pc-stat-card">
+      <div class="pc-stat-num">${todayDraws}</div>
+      <div class="pc-stat-label">今日抽卡</div>
     </div>
   `;
   wrap.appendChild(cards);
 
-  // 朝代 TOP(v3.2.5 改为统计收藏夹)
+  // 朝代 TOP(v3.2.7 走 favorites 实时计算)
   const dSec = el('div', 'pc-stats-section');
   dSec.innerHTML = `<h3>最爱朝代</h3>`;
   if (!dynasties.length) {
