@@ -36,9 +36,10 @@
 
 **配图** · 多源守护，按优先级：
 
-1. **LoremFlickr** — 支持关键词搜索，能贴合诗意，`Access-Control-Allow-Origin: *`
-2. **Picsum** — seed 稳定随机，带 `Origin` 请求时返回 CORS 头
-3. **水墨渐变** — 纯 CSS 兜底，任何情况都有底
+1. **Pollinations AI** — 根据诗词意象生成专属配图，最贴合诗意，`Access-Control-Allow-Origin: *`
+2. **LoremFlickr** — 按风景关键词搜索，`Access-Control-Allow-Origin: *`
+3. **Picsum** — seed 稳定随机风景图，带 `Origin` 请求时返回 CORS 头
+4. **水墨渐变** — 纯 CSS 兜底，任何情况都有底
 
 > ⚠️ 已移除 **Unsplash Source**（`source.unsplash.com`）——该服务于 2024 年下线，是此前配图大面积 404 的原因。
 >
@@ -82,8 +83,8 @@ poetry-cards/
   ├─ 请求 1  apiRequest('/api/poems/random')      ── 唯一一次
   │    └─ 失败 → 本地 70 首兜底 + 降级横幅
   └─ 请求 2  fetchSceneImage(poem)                ── 唯一一次
-       ├─ 从诗词正文提取意象 → 英文关键词
-       └─ LoremFlickr → Picsum → CSS 渐变兜底
+       ├─ 从诗词正文提取意象 → 英文提示词 / 风景关键词
+       └─ Pollinations AI → LoremFlickr → Picsum → CSS 渐变兜底
   ↓
 渲染明信片（DOM，用于页面展示）
   ↓
@@ -143,7 +144,7 @@ python scripts/serve.py 8080
 ### v3.0.0 (2026-09-01) — 一图一诗 · 明信片重构
 
 - 🎨 **全新文艺清新 UI**：暖白宣纸底 + 青瓷绿点缀，明信片版式，大留白细线风
-- 🖼️ **意象配图**：从诗词提取意象关键词搜图，配图贴合诗意（修复「二月花」误判为月亮的 bug）
+- 🖼️ **AI 意象配图**：从诗词提取意象生成 AI 提示词，配图更贴合诗意；失败则降级到风景关键词搜图
 - 📮 **Canvas 导出**：1200×1600 竖版高清 PNG 一键下载
 - 🔗 **分享**：Web Share API 分享图片，不支持则复制文案
 - ✨ **精简聚焦**：移除体裁/朝代筛选、搜索、历史、收藏、统计，专注「一图一诗」
@@ -168,4 +169,4 @@ python scripts/serve.py 8080
 
 ## 许可
 
-MIT · 诗词数据来自 [诗泉](https://poetry.palemoky.com/)，配图来自 LoremFlickr / Picsum。
+MIT · 诗词数据来自 [诗泉](https://poetry.palemoky.com/)，配图来自 Pollinations AI / LoremFlickr / Picsum。
