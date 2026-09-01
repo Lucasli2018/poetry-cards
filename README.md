@@ -60,6 +60,7 @@ poetry-cards/
 ├── assets/
 │   └── icons/              favicon.svg/.ico/-32.png · apple-touch-icon.png · icon-192/512.png
 ├── scripts/
+│   ├── serve.py            零依赖本地静态服务器（修正 .js/.webmanifest MIME，跨平台可用）
 │   └── make_favicon.py     纯标准库生成图标（struct+zlib 手写 PNG/ICO，输出至 assets/icons）
 ├── docs/
 │   └── PLAN-archive.md     v2.x 规划归档
@@ -90,16 +91,46 @@ poetry-cards/
 点「分享」→ navigator.share({files}) → 失败则复制文案
 ```
 
-## 启动
+## 启动（本地预览）
 
-项目使用原生 ES Modules，**必须经 http(s) 访问**（双击 `file://` 会因跨域加载不到模块）。
+项目使用原生 ES Modules，**必须经 http(s) 访问**——双击 `index.html` 用 `file://` 打开会因跨域加载不到模块，页面会空白。
+
+### ✅ 推荐：项目内置零依赖服务器（跨平台通用）
+
+已附带 `scripts/serve.py`（纯标准库，无需联网、且显式修正 `.js` / `.webmanifest` 的 MIME，
+避免 Windows 上 `python -m http.server` 把 `.js` 当 `application/octet-stream` 导致模块加载失败）。
 
 ```bash
-npx --yes http-server . -p 8080 -c-1
-# 或
-python -m http.server 8080
+# 在项目根目录执行
+python scripts/serve.py
+# 自定义端口
+python scripts/serve.py 8080
 # 浏览器打开 http://localhost:8080
 ```
+
+> 若装的是 Windows 应用商店版 Python，命令用 `py scripts/serve.py`。
+
+### 其他可用方式（任选其一，均需先进入项目根目录）
+
+- **Python 标准库（需显式修正 MIME）**
+  Windows 上 `python -m http.server` 常把 `.js` 识别成 `application/octet-stream`，浏览器会拒绝加载模块脚本。
+  用下面这行强制正确 MIME 后再访问 `http://localhost:8080`：
+  ```bash
+  python -c "import http.server,mimetypes; mimetypes.add_type('text/javascript','.js'); mimetypes.add_type('application/manifest+json','.webmanifest'); http.server.test()"
+  ```
+- **Node（首次需联网拉包，较慢）**
+  ```bash
+  npx --yes serve .
+  # 或 npx --yes http-server . -p 8080 -c-1
+  ```
+
+> 🔧 排错：页面空白先按 F12 看 Console。若报 `Failed to load module script … MIME type …`，
+> 说明 `.js` 被当成非 JS 类型——请改用上面的 `scripts/serve.py` 或带 MIME 修正的 Python 命令。
+
+### 已部署（无需本地启动）
+
+托管在 **Gitee Pages**，推送即自动更新；亦同步到 GitHub Pages。直接访问线上地址即可：
+`https://li-luoqiang.gitee.io/poetry-cards/`（以仓库 Pages 设置的实际域名/路径为准）。
 
 ## 部署
 
