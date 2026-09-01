@@ -2,86 +2,72 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>古韵抽卡 · Poetry Cards</title>
-  <meta name="description" content="单页古诗词抽卡 · 诗泉在线 · 国风宣纸">
-  <meta name="theme-color" content="#f4ecd8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>古韵抽卡 · 一图一诗</title>
+  <meta name="description" content="一图一诗 · 随机古诗词配意境美图 · 可下载分享">
+  <meta name="theme-color" content="#faf8f4">
   <meta name="color-scheme" content="light dark">
 
-  <!-- icons -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='14' fill='%23a8321e'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle' fill='%23fff7e6' font-family='KaiTi,STKaiti,serif'%3E诗%3C/text%3E%3C/svg%3E">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='28' fill='%23a8321e'/%3E%3Ctext x='90' y='126' font-size='104' text-anchor='middle' fill='%23fff7e6' font-family='KaiTi,STKaiti,serif'%3E诗%3C/text%3E%3C/svg%3E">
+  <!-- icons（多格式 fallback：SVG → ICO → PNG） -->
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="icon" type="image/x-icon" sizes="any" href="./favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
   <link rel="manifest" href="./manifest.webmanifest">
 
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header class="pc-header">
-    <h1>古韵抽卡</h1>
-    <div class="pc-subtitle">诗泉在线 · 一签一诗</div>
-    <button id="pc-theme-toggle" class="pc-theme-toggle" type="button" aria-label="切换主题" title="切换主题"></button>
-  </header>
+  <div class="pc-page">
+    <header class="pc-header">
+      <div class="pc-header-text">
+        <h1 class="pc-brand">古韵抽卡</h1>
+        <p class="pc-tagline">一图一诗 · 且听风吟</p>
+      </div>
+      <button id="pc-theme-toggle" class="pc-theme-btn" type="button" title="切换主题">自动</button>
+    </header>
 
-  <div id="pc-degraded" class="pc-degraded" role="alert">
-    <span class="pc-degraded-msg"></span>
-    <button id="pc-recover" class="pc-degraded-btn" type="button">重试恢复</button>
+    <div id="pc-degraded" class="pc-degraded" role="alert">
+      <span class="pc-degraded-msg"></span>
+      <button id="pc-recover" class="pc-degraded-btn" type="button">重试恢复</button>
+    </div>
+
+    <main class="pc-main">
+      <!-- 明信片 / 骨架屏 -->
+      <section id="pc-stage" class="pc-stage" aria-live="polite"></section>
+
+      <!-- 操作区 -->
+      <div class="pc-actions">
+        <button id="pc-draw" class="pc-btn pc-btn--primary" type="button">
+          <span class="pc-btn-spinner" aria-hidden="true"></span>
+          <span class="pc-btn-label">换一张</span>
+        </button>
+        <button id="pc-download" class="pc-btn" type="button">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+            <path d="M12 16l-5-5 1.41-1.41L11 12.17V4h2v8.17l2.59-2.58L17 11l-5 5zm-7 2h14v2H5v-2z"/>
+          </svg>
+          下载卡片
+        </button>
+        <button id="pc-share" class="pc-btn" type="button">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
+            <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 1 0-3-3c0 .24.04.47.09.7L8.04 9.81A3 3 0 1 0 6 15c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65a2.92 2.92 0 1 0 2.92-2.92z"/>
+          </svg>
+          分享
+        </button>
+      </div>
+
+      <p class="pc-hint">
+        <span id="pc-source-note" class="pc-source-note"></span>
+        <span class="pc-kbd-hint">按 <kbd>空格</kbd> 也可换一张</span>
+      </p>
+    </main>
+
+    <footer class="pc-footer">
+      诗 · <a href="https://poetry.palemoky.com/" target="_blank" rel="noopener">诗泉 API</a>
+      <span class="pc-dot">·</span>
+      图 · LoremFlickr
+    </footer>
   </div>
-
-  <section class="pc-controls" aria-label="筛选与搜索">
-    <div class="pc-search-wrap">
-      <span class="pc-search-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-      </span>
-      <input id="pc-search" class="pc-search" type="search" placeholder="搜索诗题、作者、朝代…" autocomplete="off">
-    </div>
-
-    <div class="pc-filter-group">
-      <span class="pc-filter-label">体裁</span>
-      <div id="pc-type-chips" class="pc-chips" role="group" aria-label="体裁筛选"></div>
-    </div>
-    <div class="pc-filter-group">
-      <span class="pc-filter-label">朝代</span>
-      <div id="pc-dynasty-chips" class="pc-chips" role="group" aria-label="朝代筛选"></div>
-    </div>
-
-    <button id="pc-draw" class="pc-btn-primary" aria-label="抽一签" type="button">
-      <span class="pc-btn-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.88-13.71L10 11.17l-1.88-2.35L6.29 10.5 10 15.29l4.71-5.88-1.83-1.12z"/></svg>
-      </span>
-      抽 一 签
-    </button>
-  </section>
-
-  <section class="pc-card-slot" id="pc-card-slot" aria-live="polite">
-    <p class="pc-empty">点击「抽一签」开启你的诗词之旅</p>
-  </section>
-
-  <section class="pc-stats-section" aria-label="统计">
-    <div id="pc-stats" class="pc-stats"></div>
-  </section>
-
-  <section class="pc-gallery-section" aria-label="抽取历史">
-    <div class="pc-section-header">
-      <h3>抽到的签</h3>
-      <span class="pc-section-meta">
-        <span id="pc-gallery-count">共 0 张</span>
-        <button id="pc-clear" class="pc-link-btn" type="button">清空历史</button>
-      </span>
-    </div>
-    <div id="pc-gallery" class="pc-gallery"></div>
-  </section>
-
-  <section class="pc-gallery-section" aria-label="收藏夹">
-    <div class="pc-section-header">
-      <h3>收藏夹</h3>
-    </div>
-    <div id="pc-favorites-panel" class="pc-favorites-panel"></div>
-  </section>
-
-  <footer class="pc-footer">
-    数据来源 <a href="https://poetry.palemoky.com/" target="_blank" rel="noopener">诗泉 API</a>
-    · 37 万+首 · 单页 Web · MIT
-  </footer>
 
   <script type="module" src="./src/main.js"></script>
 </body>

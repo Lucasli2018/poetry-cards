@@ -16,7 +16,13 @@ const API = 'https://poetry.palemoky.com';
 const limiter = new TokenBucket({ capacity: 6, refillPerSec: 3, maxConcurrent: 2 });
 const breaker = new CircuitBreaker({ threshold: 5, cooldownMs: 10000 });
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms, signal) => new Promise((r, reject) => {
+  const t = setTimeout(r, ms);
+  if (signal) {
+    if (signal.aborted) { clearTimeout(t); reject({ name: 'AbortError', code: 20 }); return; }
+    signal.addEventListener('abort', () => { clearTimeout(t); reject({ name: 'AbortError', code: 20 }); }, { once: true });
+  }
+});
 
 export class ApiError extends Error {
   constructor(message, { kind, status } = {}) {
@@ -27,13 +33,15 @@ export class ApiError extends Error {
   }
 }
 
-async function rawFetch(path) {
+async function rawFetch(path, { signal } = {}) {
   const release = await limiter.acquire();
   try {
     let res;
     try {
-      res = await fetch(API + path, { headers: { accept: 'application/json' } });
-    } catch {
+      res = await fetch(API + path, { headers: { accept: 'application/json' }, signal });
+    } catch (e) {
+      // 用户主动取消
+      if (e && (e.name === 'AbortError' || e.code === 20)) throw e;
       throw new ApiError('网络请求失败', { kind: 'network' });
     }
     if (!res.ok) {
@@ -70,14 +78,17 @@ function _isRetryable(e, attempt, maxRetries) {
  * @param {string} path  形如 '/api/poems/random'
  * @param {object} opts
  * @param {number} opts.maxRetries  最大重试次数（默认 3）
+ * @param {AbortSignal} opts.signal  取消信号（被取消时直接抛 AbortError，不重试）
  */
-export async function apiRequest(path, { maxRetries = 3 } = {}) {
+export async function apiRequest(path, { maxRetries = 3, signal } = {}) {
   return breaker.call(async () => {
     let attempt = 0;
     while (true) {
       try {
-        return await rawFetch(path);
+        return await rawFetch(path, { signal });
       } catch (e) {
+        // 用户主动取消：直接抛出，不重试、不进退避
+        if (e && (e.name === 'AbortError' || e.code === 20)) throw e;
         if (!_isRetryable(e, attempt, maxRetries)) throw e;
         // 计算退避时长
         let wait;
@@ -88,7 +99,8 @@ export async function apiRequest(path, { maxRetries = 3 } = {}) {
           wait = Math.min(300 * 2 ** attempt, 8000);
         }
         // 全抖动：在 [0, wait] 间随机，避免多客户端同步重试
-        await sleep(Math.random() * wait);
+        // 退避期间也要尊重取消信号
+        await sleep(Math.random() * wait, signal);
         attempt++;
       }
     }

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- 朱砂红圆角矩形底（朱砂印泥色） -->
+  <rect width="64" height="64" rx="9" ry="9" fill="#a8321e"/>
+  <!-- 内描边（增加印章感） -->
+  <rect x="4" y="4" width="56" height="56" rx="6" ry="6" fill="none" stroke="#fff7e6" stroke-width="1" stroke-opacity="0.55"/>
+  <!-- 「诗」字（楷体 fallback 到衬线/手写） -->
+  <text x="32" y="46" text-anchor="middle"
+        font-family="'KaiTi','STKaiti','STZhongsong','FangSong','Songti SC','SimSun',serif"
+        font-size="38" font-weight="700" fill="#fff7e6">诗</text>
+</svg>
