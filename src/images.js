@@ -109,7 +109,7 @@ function countMatches(re, text) {
  * @param {{title?:string, content?:string[], imageTags?:string[]}} poem
  * @returns {string[]}
  */
-function extractThemes(poem) {
+export function extractThemes(poem) {
   if (Array.isArray(poem?.imageTags) && poem.imageTags.length) {
     return poem.imageTags.slice(0, 2);
   }

@@ -11,8 +11,10 @@
 // =============================================================
 
 import { apiRequest, resetBreaker } from './net/api.js';
-import { fetchSceneImage } from './images.js';
+import { fetchSceneImage, extractThemes } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
+import { createHistoryStore } from './store/history.js';
+import { createStatsStore } from './store/stats.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 // ── 本地优先模式（默认开启，即「经典诗词」） ─────────
@@ -72,6 +74,10 @@ let _busy = false;
 let _seq = 0;
 let _abort = null;
 let _lastClickAt = 0;
+
+// v3.1 个性化记忆 store(由 init() 在拿到 ls 后实例化)
+let history = null;
+let stats = null;
 
 // ── 工具 ──────────────────────────────────────────────────
 function escapeHtml(s) {
@@ -354,6 +360,12 @@ async function drawNew() {
     curSource = source;
     renderPostcard(poem, url, source);
 
+    // v3.1 个性化记忆:成功渲染后写库(失败/取消不写)
+    //   history.push 内部做 normalizePoem,任何字段缺失都能容错
+    //   stats.onDraw 接受 themes(由 extractThemes 取 top 2 主题词)
+    history?.push(poem);
+    stats?.onDraw(poem, extractThemes(poem));
+
     if (fromApi && degraded) hideDegraded();
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
@@ -458,6 +470,10 @@ async function init() {
   });
 
   setBusyUI(false);
+
+  // v3.1 个性化记忆:实例化 history / stats store(注入 ls 适配器)
+  history = createHistoryStore(ls);
+  stats = createStatsStore(ls);
 
   // 预载本地兜底库（首屏前就绪，保证「本地优先」立即可用）
   await loadLocalPoems();
