@@ -105,6 +105,7 @@ export function createStatsStore(storage, favoritesStore) {
     return {
       totalDraws: s.totalDraws,
       todayDraws: s.todayDraws,
+      totalFavorites: favoritesStore.size(),  // v3.2.8:收藏总数,来自 favorites
       topDynasties: topDynasties(5),
       topImagery: topImagery(5),
     };

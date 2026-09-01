@@ -9,7 +9,7 @@
 //   - 图片 CDN(LoremFlickr/Picsum/Pollinations) → 不缓存（体积大、每次都变）
 // =============================================================
 
-const CACHE_NAME = 'poetry-cards-v3.4';  // v3.2.7 → v3.4:stats 双源(累计/今日走 statsMeta,朝代/意象走 favorites)
+const CACHE_NAME = 'poetry-cards-v3.5';  // v3.2.8 → v3.5:统计页加「收藏总数」第三卡
 const PRECACHE = [
   // 页面骨架
   './',

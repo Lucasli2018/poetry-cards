@@ -232,12 +232,17 @@ function throws(fn, ErrorClass, label) {
     [{ key: '唐', count: 2 }, { key: '宋', count: 1 }],
     'stats: 收藏 2 唐 1 宋 → TOP = 唐/宋');
 
-  // ⑤ snapshot 4 字段并存
+  // ⑤ snapshot 5 字段并存(v3.2.8 加 totalFavorites)
   const snap = stats.snapshot();
   eq(snap.totalDraws, 3, 'stats: snapshot.totalDraws=3');
   eq(snap.todayDraws, 3, 'stats: snapshot.todayDraws=3');
+  eq(snap.totalFavorites, 3, 'stats: snapshot.totalFavorites=3(来自 favorites)');
   eq(snap.topDynasties[0].key, '唐', 'stats: snapshot.topDynasties[0] = 唐');
   eq(Array.isArray(snap.topImagery), true, 'stats: snapshot.topImagery 是数组');
+
+  // ⑤b totalFavorites 实时跟随 favorites
+  fav.remove(88888);   // 取消 1 个收藏
+  eq(stats.snapshot().totalFavorites, 2, 'stats: 取消收藏后 totalFavorites=2');
 
   // ⑥ 取消收藏,朝代实时减少,但 totalDraws 不变
   fav.remove(900001);

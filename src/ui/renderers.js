@@ -153,8 +153,9 @@ export function renderStats(snapshot, actions = {}) {
   const imagery   = clean(m.topImagery);
 
   const wrap = el('div', 'pc-stats');
+  const totalFavorites = m.totalFavorites || 0;   // v3.2.8:收藏总数,来自 favorites
 
-  // 计数卡(两列,累计 + 今日)
+  // 计数卡(三列:累计抽卡 / 今日抽卡 / 收藏总数)
   const cards = el('div', 'pc-stats-cards');
   cards.innerHTML = `
     <div class="pc-stat-card">
@@ -164,6 +165,10 @@ export function renderStats(snapshot, actions = {}) {
     <div class="pc-stat-card">
       <div class="pc-stat-num">${todayDraws}</div>
       <div class="pc-stat-label">今日抽卡</div>
+    </div>
+    <div class="pc-stat-card">
+      <div class="pc-stat-num">${totalFavorites}</div>
+      <div class="pc-stat-label">收藏总数</div>
     </div>
   `;
   wrap.appendChild(cards);

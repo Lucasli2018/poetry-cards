@@ -539,10 +539,11 @@ function refreshMemoryPanel() {
     favorites: { items: favorites.list() },
     history:   { items: history.list() },
     stats: {
-      totalDraws:   snap.totalDraws,
-      todayDraws:   snap.todayDraws,
-      topDynasties: snap.topDynasties,
-      topImagery:   snap.topImagery,
+      totalDraws:    snap.totalDraws,
+      todayDraws:    snap.todayDraws,
+      totalFavorites: snap.totalFavorites,
+      topDynasties:  snap.topDynasties,
+      topImagery:    snap.topImagery,
     },
   });
 }
