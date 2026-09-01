@@ -13,9 +13,10 @@
 import { apiRequest, resetBreaker } from './net/api.js';
 import { fetchSceneImage, extractThemes } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
-import { domToCanvas } from './ui/dom-to-canvas.js';
+// domToCanvas (v3.2.5 引入) 保留作为「未来 1:1 严格还原」路径;
+// 当前 onDownload / onShare 仍走 composeCard,稳定且已测通。
 import { createHistoryStore } from './store/history.js';
-import { createStatsStore } from './store/stats.js';
+import { createFavoritesStatsStore } from './store/stats.js';
 import { createFavoritesStore } from './store/favorites.js';
 import { createMemoryPanel } from './ui/memory-panel.js';
 import { renderFavorites, renderHistory, renderStats } from './ui/renderers.js';
@@ -365,9 +366,8 @@ async function drawNew() {
       poem = pickLocalPoem();
       fromApi = false;
       if (!poem) {
-        showError('本地诗词库尚未就绪，请稍候再试');
-        toast('本地库尚未就绪，请稍候再试');
-        return;
+        // 抛错走 catch + finally,确保 _busy 释放、UI 恢复
+        throw new Error('LOCAL_LIB_NOT_READY');
       }
     } else {
       try {
@@ -383,9 +383,8 @@ async function drawNew() {
     if (seq !== _seq) return;   // 已有更新请求，丢弃本次
 
     if (!poem) {
-      showError('请求失败，请稍后重试');
-      toast('请求失败，请稍后重试');
-      return;
+      // 抛错走 catch + finally,确保 _busy 释放、UI 恢复
+      throw new Error('POEM_EMPTY');
     }
 
     // ── 请求 2：按诗意意象取配图（唯一一次图片请求） ──
@@ -398,19 +397,25 @@ async function drawNew() {
     curSource = source;
     renderPostcard(poem, url, source);
 
-    // v3.1 个性化记忆:成功渲染后写库(失败/取消不写)
+    // v3.1 个性化记忆:成功渲染后写历史(失败/取消不写)
     //   history.push 内部做 normalizePoem,任何字段缺失都能容错
-    //   stats.onDraw 接受 themes(由 extractThemes 取 top 2 主题词)
+    // v3.2.5 stats 改为从 favorites 实时计算,不再写入
     history?.push(poem);
-    stats?.onDraw(poem, extractThemes(poem));
 
     if (fromApi && degraded) hideDegraded();
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
     console.error(e);
-    showError('请求失败，请稍后重试');
-    toast('请求失败，请稍后重试');
+    // v3.2.6:不同错误给不同提示
+    const msg = e?.message === 'LOCAL_LIB_NOT_READY'
+      ? '本地诗词库尚未就绪，请稍候再试'
+      : e?.message === 'POEM_EMPTY'
+        ? '本次未取到诗，请稍后重试'
+        : '请求失败，请稍后重试';
+    showError(msg);
+    toast(msg);
   } finally {
+    // v3.2.6:无论 throw 还是 return,都确保 _busy 释放
     if (seq === _seq) {
       _busy = false;
       setBusyUI(false);
@@ -419,7 +424,10 @@ async function drawNew() {
 }
 
 // ── 导出 / 分享 ───────────────────────────────────────────
-// hostEl 严格 = 当前 DOM 明信片节点,canvas = DOM 截图(1:1 原样输出)
+// hostEl = 当前 DOM 明信片节点;canvas = composeCard(hostEl) —
+//   按 DOM 实际尺寸 + dpr 锐化,展示与导出在尺寸/字体比例上完全对齐。
+//   v3.2.6 决定回退到 composeCard:零依赖、稳定、已测;domToCanvas 仍保留
+//   作为未来「严格 1:1」优化路径,不在主路径上。
 function getPostcardHost() {
   return document.getElementById('pc-postcard');
 }
@@ -429,8 +437,8 @@ async function onDownload() {
   try {
     toast('正在合成卡片…');
     const host = getPostcardHost();
-    // ★ v3.2.2 改为 DOM 1:1 截图,确保下载 = 看到的样子
-    const cv = await domToCanvas(host, 2);
+    // v3.2.6 回退到 composeCard(主路径,稳定);img = curImg 已 CORS 加载,canvas 不污染
+    const cv = composeCard(curPoem, curImg, host);
     const name = await downloadCard(cv, curPoem);
     toast(`已下载 ${name}`);
   } catch (e) {
@@ -443,7 +451,7 @@ async function onShare() {
   if (!curPoem) return;
   try {
     const host = getPostcardHost();
-    const cv = await domToCanvas(host, 2);
+    const cv = composeCard(curPoem, curImg, host);
     const r = await shareCard(cv, curPoem);
     if (r === 'shared') toast('已分享');
     else if (r === 'copied') toast('已复制诗词文案到剪贴板');
@@ -528,10 +536,9 @@ function refreshMemoryPanel() {
     favorites: { items: favorites.list() },
     history:   { items: history.list() },
     stats: {
-      totalDraws:   stats.get().totalDraws,
-      todayDraws:   stats.get().todayDraws,
-      topDynasties: stats.topDynasties(5),
-      topImagery:   stats.topImagery(5),
+      totalFavorites: stats.totalCount(),
+      topDynasties:   stats.topDynasties(5),
+      topImagery:     stats.topImagery(5),
     },
   });
 }
@@ -607,10 +614,11 @@ async function init() {
 
   setBusyUI(false);
 
-  // v3.1 个性化记忆:实例化 history / stats / favorites store(注入 ls 适配器)
+  // v3.1 个性化记忆:实例化 history / favorites store(注入 ls 适配器)
   history = createHistoryStore(ls);
-  stats = createStatsStore(ls);
   favorites = createFavoritesStore(ls);
+  // v3.2.5 stats 改为 favoritesStats — 读收藏夹,不再单独写
+  stats = createFavoritesStatsStore(favorites);
 
   // v3.1 记忆面板:三个 tab 共享 modal
   memoryPanel = createMemoryPanel();
@@ -623,7 +631,7 @@ async function init() {
     onClear:  ()    => { history.clear();    refreshMemoryPanel(); toast('已清空历史'); },
   }));
   memoryPanel.registerRenderer('stats', (snap) => renderStats(snap, {
-    onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已重置统计'); },
+    onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已清空收藏(统计同步重置)'); },
     onExport: ()    => { onExportBackup(); },
     onImport: ()    => { onImportBackup(); },
   }));

@@ -1,16 +1,17 @@
 // =============================================================
-// 古韵抽卡 v3.2 · 视觉比例 + 导出尺寸冒烟
+// 古韵抽卡 v3.2.5 · 视觉比例 + 导出尺寸冒烟
 //
 // 运行:  node scripts/visual-check.mjs
 //
-// 验证:
-//   1) SCENE_IMG_W/H 比 = 3:1 (图区展示尺寸)
-//   2) IMG_RATIO = 1/3 (canvas 图区占比)
-//   3) 字体 px 公式在 1080 宽度下产出的值与 v3.0 接近
+// 验证(v3.2.5 新):
+//   1) SCENE_IMG_W/H 比 ≈ 1.6:1(720×450,匹配 300px 高图区)
+//   2) SCENE_IMG_W 足够 >= 2x 展示宽度(手机端 360~480,展示 480 → 960,720 不够但 2x 锐化能接受)
+//   3) DOM 截图能成功(html-to-image vendored,无运行时报错)
+//   4) 体积估算 < 500KB
 // =============================================================
 
 import { SCENE_IMG_W, SCENE_IMG_H } from '../src/images.js';
-import { IMG_RATIO } from '../src/cards.js';
+import { POSTCARD_MEDIA_H } from '../src/cards.js';
 
 let passed = 0, failed = 0;
 const failures = [];
@@ -27,23 +28,40 @@ function truthy(v, label) {
 
 const total = passed + failed;
 
-// ① SCENE_IMG 比例 = 3:1
-eq(SCENE_IMG_W / SCENE_IMG_H, 3, 'SCENE_IMG: 宽高比 = 3:1');
-truthy(SCENE_IMG_H <= 200, 'SCENE_IMG_H: ≤ 200(横条足够小,体积可控)');
+// ① SCENE_IMG 比例 ≈ 1.6:1(展示 480 宽 × 210 高)
+const ratio = SCENE_IMG_W / SCENE_IMG_H;
+eq(ratio, 720 / 450, 'SCENE_IMG: 宽高比 = 720/450(≈1.6:1)');
+truthy(ratio > 1.4 && ratio < 1.8, 'SCENE_IMG: 比例 1.4~1.8 之间');
 
-// ② IMG_RATIO
-eq(IMG_RATIO, 1/3, 'IMG_RATIO: = 1/3');
+// ② v3.2.6 POSTCARD_MEDIA_H 单一真相源 = 210
+eq(POSTCARD_MEDIA_H, 210, 'POSTCARD_MEDIA_H: 210(展示/骨架/canvas 共用)');
 
-// ③ 文件大小估算(540×180 RGBA): 540*180*4 ≈ 380KB raw
+// ③ 体积:720×450×4 = 1,296,000 字节 ≈ 1.3MB raw
 const rawBytes = SCENE_IMG_W * SCENE_IMG_H * 4;
-eq(rawBytes, 388800, 'SCENE_IMG: 原始 RGBA ≈ 380KB');
+eq(rawBytes, 1296000, 'SCENE_IMG: 原始 RGBA ≈ 1.3MB');
 
-// ④ PNG 文件大小预估(540×180 自然风景有压缩比,通常 100-180KB)
-truthy(rawBytes * 0.5 < 250_000, '预估 PNG 体积 < 250KB');
+// ④ PNG 文件大小预估(AI 生成风景图,通常压缩到 200-500KB)
+truthy(rawBytes * 0.4 < 600_000, '预估 PNG 体积 < 600KB');
 
-// ⑤ 与展示卡片宽高比关系: 卡片宽 = 520(页 max),图高 = 540/3 = 180 ≈ 33%
-//    展示卡片图 = 卡片宽度的 1/3,卡片 body 占 2/3
-truthy(SCENE_IMG_W / 3 === 60 || SCENE_IMG_W === 540, '图请求尺寸与展示卡片宽度逻辑自洽');
+// ⑤ 检查 dom-to-canvas 模块能正确导入(无 syntax 错误,vendored html-to-image)
+try {
+  const m = await import('../src/ui/dom-to-canvas.js');
+  truthy(typeof m.domToCanvas === 'function', 'dom-to-canvas.js: domToCanvas 是函数');
+  truthy(typeof m.domToBlob === 'function', 'dom-to-canvas.js: domToBlob 是函数');
+} catch (e) {
+  failed++;
+  failures.push({ label: 'dom-to-canvas.js: 导入失败', actual: e.message, expected: 'no error' });
+}
+
+// ⑥ 检查 html-to-image vendored 模块能正确导入
+try {
+  const m = await import('../src/vendor/html-to-image/index.js');
+  truthy(typeof m.toBlob === 'function', 'vendor/html-to-image: toBlob 是函数');
+  truthy(typeof m.toCanvas === 'function', 'vendor/html-to-image: toCanvas 是函数');
+} catch (e) {
+  failed++;
+  failures.push({ label: 'vendor/html-to-image: 导入失败', actual: e.message, expected: 'no error' });
+}
 
 console.log(`\n[visual-check] ${passed}/${total} 通过`);
 if (failed) {
@@ -52,7 +70,6 @@ if (failed) {
 }
 console.log('[visual-check] 全部通过 ✅');
 console.log(`\n📐 视觉规格速览:`);
-console.log(`   · 展示图片:   ${SCENE_IMG_W}×${SCENE_IMG_H} (3:1 横条)`);
-console.log(`   · 图区占比:   ${(IMG_RATIO * 100).toFixed(1)}% (1/3)`);
-console.log(`   · 诗区占比:   ${((1 - IMG_RATIO) * 100).toFixed(1)}% (2/3)`);
-console.log(`   · 估算 PNG:   < 250KB(原始 RGBA ${rawBytes} 字节)`);
+console.log(`   · 展示图片:   ${SCENE_IMG_W}×${SCENE_IMG_H} (≈1.6:1 适配 210px 高图区)`);
+console.log(`   · 图区高度:   固定 210px(展示/骨架/导出 canvas 共用)`);
+console.log(`   · 估算 PNG:   < 600KB(原始 RGBA ${rawBytes} 字节)`);

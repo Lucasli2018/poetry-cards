@@ -1,105 +1,60 @@
 // =============================================================
-// 古韵抽卡 v3.2 · DOM → Canvas 截图(零依赖)
+// 古韵抽卡 v3.2.5 · DOM → Canvas/Blob(基于 html-to-image)
 //
 // 把当前 DOM 节点原样导出为 PNG,完全 1:1 复刻页面展示。
-// 原理:序列化 DOM → 嵌入 SVG <foreignObject> → 转为 dataURL
-//       → <img> 加载 → 画到 canvas → toBlob('PNG
 //
-// 限制:
-//   1) 必须同源(整页就是同源,无问题)
-//   2) 外部图片必须已带 CORS 头(Pollinations/LoremFlickr/Picsum 均满足)
-//   3) <img> 加载 dataURL 时,canvas 不会被污染(同源规则)
-//   4) 内嵌的 web font 需浏览器已加载(已在页面中渲染 → 已加载)
+// 原理:序列化 DOM → 内联 <img> 为 dataURL → 内联 webfont →
+//       嵌入 SVG → <img> 加载 SVG → canvas.drawImage → toBlob。
 //
-// 参考:https://stackoverflow.com/a/62224755(html-to-image 思路)
+// 依赖:html-to-image(v1.11.13, vendored 到 src/vendor/html-to-image/)
+//   体积 ≈ 32KB(全部 .js 文件合计),MIT 协议。
+//
+// 为什么不用自己实现:SVG <foreignObject> 在 macOS Safari / 部分移动端浏览器
+// 对 webfont / 跨域图片支持有坑,html-to-image 的 clone-node + embed
+// 已经处理了 4 万 star 积累的所有边缘情况。
+//
+// 与 cards.js 的关系:
+//   composeCard() 仍保留,作为「离线/无依赖」路径的兜底;
+//   本模块(vendor)作为「首选路径」,失败时降级到 composeCard。
 // =============================================================
 
-/**
- * 克隆 DOM 节点,把图片 src 同步成已加载的 dataURL,避免 foreignObject
- * 加载时再触发网络请求(网络图跨域 / 时序不可控)。
- */
-async function inlineImages(root) {
-  const imgs = [...root.querySelectorAll('img')];
-  await Promise.all(imgs.map(async (img) => {
-    try {
-      if (!img.complete || img.naturalWidth === 0) {
-        await new Promise((res) => {
-          img.onload = res;
-          img.onerror = res;     // 失败也继续,不影响整体导出
-          setTimeout(res, 2000); // 兜底超时
-        });
-      }
-      // 用 canvas 中转 → dataURL,这样 SVG 里引用就是同源
-      const cv = document.createElement('canvas');
-      cv.width = img.naturalWidth || img.width || 100;
-      cv.height = img.naturalHeight || img.height || 100;
-      const ctx = cv.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      img.src = cv.toDataURL('image/png');
-    } catch {
-      // 单图失败不影响其他
-    }
-  }));
-}
+import * as htmlToImage from '../vendor/html-to-image/index.js';
 
-function escapeXml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+const DEFAULTS = Object.freeze({
+  pixelRatio: 2,                 // 锐化倍率(与 v3.2 保持一致)
+  backgroundColor: '#fdfcf9',    // 米白纸色,避免透明背景 PNG 在某些看图器里变黑
+  cacheBust: true,               // 强制重新加载图片,避免拿到缓存中的旧图
+});
 
 /**
  * DOM 节点 → HTMLCanvasElement (dpr 锐化)
  * @param {HTMLElement} el  要截图的 DOM 节点
- * @param {number} [scale=2] 锐化倍率(导出像素 = 实际尺寸 × scale)
+ * @param {object} [opts]   透传 html-to-image 选项(覆盖默认)
  * @returns {Promise<HTMLCanvasElement>}
  */
-export async function domToCanvas(el, scale = 2) {
+export async function domToCanvas(el, opts = {}) {
   if (!el) throw new Error('domToCanvas: el 不能为空');
+  const options = { ...DEFAULTS, ...opts };
 
-  // ① 把 <img> 都内联成 dataURL(同源 + 同步加载,SVG 才能正确嵌入)
-  await inlineImages(el);
-
-  // ② 测尺寸
+  // html-to-image 1.11.13 在超大尺寸 + 慢机器上偶尔抛 "Maximum canvas size exceeded"
+  // 原因:大尺寸 SVG 转 <img> 时 canvas 像素超 16384 / 16777216 上限。
+  // 防护:缩放 pixelRatio 到不超过浏览器安全上限。
   const r = el.getBoundingClientRect();
-  const W = r.width, H = r.height;
+  const ratio = Math.min(options.pixelRatio, 16384 / Math.max(r.width, 1), 16384 / Math.max(r.height, 1));
+  if (ratio < options.pixelRatio) options.pixelRatio = Math.floor(ratio) || 1;
 
-  // ③ 序列化 DOM + 内嵌到 SVG
-  const xml = new XMLSerializer().serializeToString(el);
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <foreignObject width="100%" height="100%" style="background:${getComputedStyle(el).backgroundColor || 'transparent'}">
-    <div xmlns="http://www.w3.org/1999/xhtml" style="width:${W}px;height:${H}px;">
-      ${xml}
-    </div>
-  </foreignObject>
-</svg>`;
-  const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-  const svgUrl = URL.createObjectURL(svgBlob);
+  return htmlToImage.toCanvas(el, options);
+}
 
-  // ④ 把 SVG 加载成 <img> → 画到 canvas(锐化)
-  const out = document.createElement('canvas');
-  out.width = Math.round(W * scale);
-  out.height = Math.round(H * scale);
-  const ctx = out.getContext('2d');
-  ctx.scale(scale, scale);
-
-  await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, W, H);
-      URL.revokeObjectURL(svgUrl);
-      resolve();
-    };
-    img.onerror = (e) => {
-      URL.revokeObjectURL(svgUrl);
-      reject(new Error('SVG → IMG 加载失败:' + (e?.message || 'unknown')));
-    };
-    img.src = svgUrl;
+/**
+ * DOM 节点 → PNG Blob(一步到位)
+ * @param {HTMLElement} el
+ * @param {object} [opts]
+ * @returns {Promise<Blob>}
+ */
+export async function domToBlob(el, opts = {}) {
+  const cv = await domToCanvas(el, opts);
+  return new Promise((resolve, reject) => {
+    cv.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas.toBlob 失败'))), 'image/png');
   });
-
-  return out;
 }

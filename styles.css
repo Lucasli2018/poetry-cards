@@ -155,7 +155,7 @@ body {
 .pc-degraded-btn:hover { background: var(--accent-soft); }
 
 /* ── 明信片 ───────────────────────────────────────────── */
-.pc-stage { min-height: 380px; }    /* v3.2.4:卡片图区 300 + body 最小高度 ≈ 380 */
+.pc-stage { min-height: 290px; }    /* v3.2.6:卡片图区 210 + body 最小高度 ≈ 290 */
 
 .postcard {
   background: var(--card);
@@ -170,13 +170,13 @@ body {
 }
 .postcard.is-in { opacity: 1; transform: none; }
 
-/* 配图区(v3.2.4 固定 300px 高度,诗主导)
+/* 配图区(v3.2.6 固定 210px 高度,诗主导)
    - 固定高更稳:换诗时图区不会跳来跳去
-   - 与展示图片请求尺寸 (540×180=300×100 比例保持)联动
+   - 展示 / 骨架 / 导出 Canvas 共用此值(单一真相源)
 */
 .postcard-media {
   position: relative;
-  height: 300px;           /* v3.2.4 固定高度,避免换诗时视觉抖动 */
+  height: 210px;           /* v3.2.6 固定 210px */
   background: linear-gradient(135deg, #e8e4d9 0%, #d5cfc0 50%, #c2bba9 100%);
   overflow: hidden;
 }
@@ -369,7 +369,7 @@ body {
 }
 .pc-skeleton-media {
   position: relative;
-  aspect-ratio: 3 / 4;
+  height: 210px;            /* v3.2.6 与 .postcard-media 同高,避免加载时跳动 */
   background: var(--bg-grad);
   overflow: hidden;
 }

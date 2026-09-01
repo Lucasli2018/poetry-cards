@@ -20,8 +20,10 @@
 //   └──────────────┘
 // =============================================================
 
-// 图区在卡面高度中的占比（与 styles.css .postcard-media 保持同步）
-const IMG_RATIO = 1 / 3;
+// 配图区固定高度(单一真相源,展示 / 骨架 / 导出 canvas 共用)
+//   与 styles.css .postcard-media 和 .pc-skeleton-media 的 height: 210px 完全同步
+//   改这里必须同步改 styles.css
+export const POSTCARD_MEDIA_H = 210;
 
 // dpr 上限:防止 4K 屏导出 PNG 巨大；2x 已足够清晰且控体积
 const DPR_CAP = 2;
@@ -108,9 +110,10 @@ function measure(hostEl) {
  * @returns {HTMLCanvasElement}
  */
 export function composeCard(poem, bgImg, hostEl) {
-  const { W: CARD_W, H: CARD_H } = hostEl
+  const m = hostEl
     ? measure(hostEl)
-    : { W: 1080, H: 1440 };   // 兜底：未传 host 时用 3:4 默认值
+    : { W: 1080, H: 1440, dpr: 1 };   // 兜底：未传 host 时用 3:4 默认值
+  const { W: CARD_W, H: CARD_H, dpr } = m;
 
   const cv = document.createElement('canvas');
   cv.width = CARD_W;
@@ -121,8 +124,8 @@ export function composeCard(poem, bgImg, hostEl) {
   ctx.fillStyle = C.paper;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 
-  // ② 背景图：cover 裁切，占据上方 IMG_RATIO（≈1/3）
-  const imgH = Math.round(CARD_H * IMG_RATIO);
+  // ② 背景图：cover 裁切，占据固定 210px(展示同步,不再按 CARD_H 比例)
+  const imgH = Math.round(POSTCARD_MEDIA_H * dpr);
   if (bgImg && bgImg.width && bgImg.height) {
     const scale = Math.max(CARD_W / bgImg.width, imgH / bgImg.height);
     const dw = bgImg.width * scale;
@@ -318,4 +321,4 @@ export async function shareCard(cv, poem) {
 }
 
 export const CARD_SIZE = { w: 1080, h: 1440 };
-export { IMG_RATIO, DPR_CAP };
+// POSTCARD_MEDIA_H / DPR_CAP 已在文件顶部以 export const 形式导出

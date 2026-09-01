@@ -139,8 +139,7 @@ const IMAGERY_LABELS = {
 
 export function renderStats(snapshot, actions = {}) {
   const m = snapshot?.stats || snapshot || {};
-  const total = m.totalDraws || 0;
-  const today = m.todayDraws || 0;
+  const total = m.totalFavorites || m.totalDraws || 0;     // v3.2.5:总数=收藏数
   // 兜底:把缺失 / "[object Object]" / 非字符串 的 key 替换成「佚名」占位符
   const PLACEHOLDER = '佚名';
   const clean = (arr) => (arr || [])
@@ -154,25 +153,21 @@ export function renderStats(snapshot, actions = {}) {
 
   const wrap = el('div', 'pc-stats');
 
-  // 计数卡(两列)
+  // 计数卡(单列,v3.2.5 只显示「收藏总数」)
   const cards = el('div', 'pc-stats-cards');
   cards.innerHTML = `
-    <div class="pc-stat-card">
+    <div class="pc-stat-card pc-stat-card--solo">
       <div class="pc-stat-num">${total}</div>
-      <div class="pc-stat-label">累计抽卡</div>
-    </div>
-    <div class="pc-stat-card">
-      <div class="pc-stat-num">${today}</div>
-      <div class="pc-stat-label">今日抽卡</div>
+      <div class="pc-stat-label">收藏总数</div>
     </div>
   `;
   wrap.appendChild(cards);
 
-  // 朝代 TOP
+  // 朝代 TOP(v3.2.5 改为统计收藏夹)
   const dSec = el('div', 'pc-stats-section');
   dSec.innerHTML = `<h3>最爱朝代</h3>`;
   if (!dynasties.length) {
-    dSec.appendChild(el('p', 'pc-stats-hint', '再多抽几张就会有数据'));
+    dSec.appendChild(el('p', 'pc-stats-hint', '在喜欢的诗右下角点 ♡ 收藏,这里会按朝代累计'));
   } else {
     const max = dynasties[0].count || 1;
     const list = el('div', 'pc-bars');
@@ -190,11 +185,11 @@ export function renderStats(snapshot, actions = {}) {
   }
   wrap.appendChild(dSec);
 
-  // 意象 TOP
+  // 意象 TOP(v3.2.5 统计收藏)
   const iSec = el('div', 'pc-stats-section');
   iSec.innerHTML = `<h3>最爱意象</h3>`;
   if (!imagery.length) {
-    iSec.appendChild(el('p', 'pc-stats-hint', '诗词里的字不够丰富,等诗意积累'));
+    iSec.appendChild(el('p', 'pc-stats-hint', '收藏更多诗,意象慢慢就会浮出'));
   } else {
     const max = imagery[0].count || 1;
     const list = el('div', 'pc-bars');
