@@ -1,18 +1,13 @@
 // =============================================================
-// 古韵抽卡 v2.0 · 零依赖 · 诗泉在线
+// 古韵抽卡 v2.1 · 零依赖 · 诗泉在线
+// 令牌桶主动限流 + 熔断 + 指数退避(全抖动) + 显式失败/本地降级 + 骨架屏
 // API: https://poetry.palemoky.com
 // =============================================================
 
-const API = 'https://poetry.palemoky.com';
-const LOCAL_POEMS_URL = './src/poems.local.json';
+import { apiRequest, ApiError, resetBreaker } from './api.js';
 
-// ── 限流 / 退避参数 ───────────────────────────────────────
-// 诗泉 API 对 /api/poems/random 有频率限制（429），这里：
-// 1) 限制并发并留出请求间隔，避免一拥而上触发限流；
-// 2) 命中 429 时读取 Retry-After 做指数退避，而非立即重试；
-// 3) API 持续不可用时回退到本地内置诗词库，抽卡永远可用。
-const FETCH_BATCH = 3;          // 每轮并发随机请求数（原 6，已降以避开限流）
-const MIN_GAP_MS = 160;         // 两次随机请求之间的最小间隔
+const LOCAL_POEMS_URL = './src/poems.local.json';
+const FETCH_BATCH = 3;          // 每轮并发随机请求数（令牌桶另限同时在途 ≤2）
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ── DOM 引用 ───────────────────────────────────────────────
@@ -62,61 +57,16 @@ const store = {
   saveFilters: (f) => saveJSON(LS_KEYS.filters, f),
 };
 
-// ── API 调用（限流感知） ──────────────────────────────────
-async function apiGet(path, { maxRetries = 2 } = {}) {
-  let attempt = 0;
-  while (true) {
-    let res;
-    try {
-      res = await fetch(API + path, { headers: { accept: 'application/json' } });
-    } catch (netErr) {
-      // 网络层错误（离线 / DNS / CORS）→ 退避后重试
-      if (attempt < maxRetries) { attempt++; await sleep(1000 * attempt); continue; }
-      throw netErr;
-    }
-    if (res.ok) {
-      const j = await res.json().catch(() => ({}));
-      return j.data;
-    }
-    if (res.status === 429) {
-      // 命中限流：优先尊重服务端 Retry-After，否则指数退避
-      const retryAfter = Number(res.headers.get('Retry-After')) || 0;
-      const wait = retryAfter > 0 ? retryAfter * 1000 : 1200 * (attempt + 1);
-      if (attempt < maxRetries) { attempt++; await sleep(wait); continue; }
-      throw new Error('API 429 (Too Many Requests)');
-    }
-    if (res.status >= 500 && attempt < maxRetries) {
-      attempt++; await sleep(1000 * attempt); continue;
-    }
-    throw new Error(`API ${res.status}`);
-  }
-}
-
+// ── API 调用（统一请求层：令牌桶 + 退避 + 熔断） ──────────
 async function loadTypes() {
-  const list = await apiGet('/api/types');
+  const list = await apiRequest('/api/types');
   return list.filter(t => t.id !== 99);
 }
 async function loadDynasties() {
-  return await apiGet('/api/dynasties');
+  return await apiRequest('/api/dynasties');
 }
-
-// 随机诗：对限流更敏感，少重试以便尽快回退到本地库
 async function randomPoem() {
-  return await apiGet('/api/poems/random', { maxRetries: 1 });
-}
-
-// 带间隔的随机请求发射器：避免瞬时高并发触发 429
-let _lastLaunch = 0;
-async function throttleLaunch() {
-  const now = Date.now();
-  const gap = MIN_GAP_MS - (now - _lastLaunch);
-  if (gap > 0) await sleep(gap);
-  _lastLaunch = Date.now();
-}
-async function fetchRandomSafe() {
-  await throttleLaunch();
-  try { return await randomPoem(); }
-  catch { return null; }   // 失败交给上层逻辑决定（重试 / 本地兜底）
+  return await apiRequest('/api/poems/random', { maxRetries: 2 });
 }
 
 // ── 抽卡池（客户端过滤） ──────────────────────────────────
@@ -131,6 +81,40 @@ const pool = {
 
 // 本地内置诗词库（API 限流 / 不可用时启用）
 let localPoems = [];
+
+// ── 运行状态：online | degraded ──────────────────────────
+// degraded = 诗泉接口不可用（限流/离线/错误），已切换本地库但仍可抽卡
+let appMode = 'online';
+function degradedBannerEl() { return document.getElementById('pc-degraded'); }
+function showDegradedBanner(kind) {
+  const el = degradedBannerEl();
+  if (!el) return;
+  const msg = kind === 'offline'
+    ? '网络已断开，已切换本地诗词库（70 首）'
+    : '诗泉接口暂不可用（限流/错误），已切换本地诗词库（70 首）';
+  el.querySelector('.pc-degraded-msg').textContent = '⚠ ' + msg;
+  el.classList.add('pc-degraded--show');
+  if (appMode !== 'degraded') {
+    appMode = 'degraded';
+    toast('请求失败，已降级到本地库，可点横幅「重试恢复」');
+  }
+}
+function hideDegradedBanner() {
+  const el = degradedBannerEl();
+  if (el) el.classList.remove('pc-degraded--show');
+  if (appMode === 'degraded') appMode = 'online';
+}
+// 「重试恢复」：复位熔断器并探测一次，成功则回到在线模式
+async function attemptRecover() {
+  resetBreaker();
+  try {
+    await apiRequest('/api/poems/random', { maxRetries: 1 });
+    hideDegradedBanner();
+    toast('已恢复在线模式');
+  } catch {
+    toast('仍不可用，继续本地模式');
+  }
+}
 
 function passesFilter(poem) {
   if (pool.typeFilter !== 'all' && poem.type.id !== Number(pool.typeFilter)) return false;
@@ -153,10 +137,7 @@ function fillFromLocal(targetSize) {
     pool.items.push(p);
     added++;
   }
-  if (added > 0 && !pool.usingLocal) {
-    pool.usingLocal = true;
-    toast('诗泉 API 限流中，已切换本地诗词库');
-  }
+  if (added > 0 && !pool.usingLocal) pool.usingLocal = true;
   return added;
 }
 
@@ -168,27 +149,41 @@ async function refillPool(targetSize = 40, maxRounds = 60) {
     let rounds = 0;
     while (pool.items.length < targetSize && rounds < maxRounds) {
       rounds++;
-      // 并发受控 + 间隔受控，避免触发 429
-      const batch = await Promise.all(Array.from({ length: FETCH_BATCH }, () => fetchRandomSafe()));
+      // 经统一请求层（令牌桶 + 退避 + 熔断）；失败时保留错误对象用于判断类型
+      const batch = await Promise.all(Array.from({ length: FETCH_BATCH }, async () => {
+        try { return await randomPoem(); }
+        catch (e) { return e; }
+      }));
       let got = 0;
       for (const p of batch) {
-        if (!p) continue;
+        if (!p || p instanceof Error) continue;
         got++;
         if (pool.seenIds.has(p.id)) continue;
         pool.seenIds.add(p.id);
         if (passesFilter(p)) pool.items.push(p);
       }
-      if (got === 0) {
-        // 本轮全部失败（很可能 429 / 离线）→ 稍等并累计，连续 2 轮即转本地兜底
-        emptyRounds++;
-        if (emptyRounds >= 2) { fillFromLocal(targetSize); break; }
-        await sleep(1500 * emptyRounds);
-      } else {
+      if (got > 0) {
+        // 拿到数据 → 若此前处于降级态，尝试自动恢复在线
+        if (appMode === 'degraded') { hideDegradedBanner(); toast('诗泉接口已恢复'); }
         emptyRounds = 0;
+      } else {
+        // 本轮全部失败（很可能 429 / 离线）
+        emptyRounds++;
+        if (emptyRounds >= 2) {
+          const err = batch.find(x => x instanceof Error);
+          const kind = (!navigator.onLine || (err && err.kind === 'network')) ? 'offline' : 'api';
+          showDegradedBanner(kind);
+          fillFromLocal(targetSize);
+          break;
+        }
+        await sleep(1200 * emptyRounds);
       }
     }
-    // 池仍不足（如筛选过窄 + 本地也匹配不上）→ 兜底补齐
-    if (pool.items.length < targetSize) fillFromLocal(targetSize);
+    // 池仍不足（如筛选过窄 + 本地也匹配不上）→ 兜底补齐并提示
+    if (pool.items.length < targetSize) {
+      if (appMode !== 'degraded') showDegradedBanner('api');
+      fillFromLocal(targetSize);
+    }
   } finally {
     pool.inflight = false;
   }
@@ -392,7 +387,11 @@ async function copyText(text) {
 
 // ── 主流程 ───────────────────────────────────────────────
 function showSkeleton() {
-  els.slot.innerHTML = '<div class="pc-skeleton">正在寻诗</div>';
+  els.slot.innerHTML = `
+    <div class="pc-skeleton">
+      <div class="pc-skeleton-card"><span class="pc-shimmer"></span></div>
+      <div class="pc-skeleton-text">正在寻诗…</div>
+    </div>`;
 }
 
 async function showCard(poem) {
@@ -437,8 +436,8 @@ async function drawOnce() {
     if (pool.items.length < 20) refillPool(40, 60);
   } catch (e) {
     console.error(e);
-    toast('抽签失败：' + e.message);
-    els.slot.innerHTML = '<p class="pc-empty">抽签失败，点击重试</p>';
+    toast('请求失败，请稍后重试');
+    els.slot.innerHTML = '<p class="pc-empty">请求失败，请稍后重试</p>';
   } finally {
     els.drawBtn.disabled = false;
     els.drawBtn.textContent = originalText;
@@ -516,13 +515,16 @@ async function init() {
     console.error('元数据加载失败', e);
     if (localPoems.length) {
       buildSelectsFromLocal();
-      toast('诗泉 API 不可用，已用本地诗词库');
+      const kind = (!navigator.onLine || (e && e instanceof ApiError && e.kind === 'network')) ? 'offline' : 'api';
+      showDegradedBanner(kind);
     } else {
       toast('诗泉 API 不可用，请检查网络');
     }
   }
 
   els.drawBtn.addEventListener('click', drawOnce);
+  const recoverBtn = document.getElementById('pc-recover');
+  if (recoverBtn) recoverBtn.addEventListener('click', attemptRecover);
   els.type.addEventListener('change', () => {
     pool.typeFilter = els.type.value;
     pool.items = [];
