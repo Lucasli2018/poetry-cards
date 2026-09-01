@@ -425,46 +425,101 @@ body {
   to   { transform: translateX(100%); }
 }
 
-/* ── 头部按钮组（自动/本地优先） ───────────────────────── */
+/* ── 头部按钮组 ─────────────────────────────────────── */
 .pc-header-actions {
   flex: none;
   display: flex;
   align-items: flex-start;
   gap: 10px;
 }
-.pc-header-actions .pc-btn--toggle,
-.pc-header-actions .pc-theme-btn {
+
+/* ── 典雅 switch · 诗源切换 ─────────────────────────────
+   结构:.pc-switch > .pc-switch-label{off|on} + .pc-switch-track > .pc-switch-thumb
+   状态:.pc-switch[aria-checked="true"]  → 经典档(默认)
+        .pc-switch[aria-checked="false"] → 随机档
+   视觉:无边框胶囊轨道 + 圆形滑块 + 两侧文字标签
+*/
+.pc-switch {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  font-family: var(--font-sans);
-  font-size: 12px;
-  letter-spacing: .06em;
-  color: var(--sub);
+  gap: 8px;
+  padding: 5px 8px;
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: var(--r-btn);
-  cursor: pointer;
+  border-radius: 999px;
   box-shadow: var(--shadow-sm);
-  transition: transform .18s ease, border-color .18s ease, color .18s ease, background-color .18s ease, box-shadow .18s ease;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .12s ease;
 }
-.pc-header-actions .pc-btn--toggle:hover,
-.pc-header-actions .pc-theme-btn:hover {
-  transform: translateY(-1px);
+.pc-switch:hover { border-color: var(--accent); }
+.pc-switch:focus-visible {
   border-color: var(--accent);
-  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.pc-header-actions .pc-btn--toggle.is-on {
-  color: #fff;
+.pc-switch:active { transform: translateY(1px); }
+
+.pc-switch-label {
+  font-family: var(--font-serif);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  color: var(--sub);
+  transition: color .25s ease, opacity .25s ease;
+  white-space: nowrap;
+}
+/* 当前激活态用墨黑 + 朱砂微点缀;非激活态灰 */
+.pc-switch-label--on  { color: var(--ink); font-weight: 600; }
+.pc-switch[aria-checked="false"] .pc-switch-label--off,
+.pc-switch[aria-checked="false"] .pc-switch-label--on  { color: var(--sub); opacity: .55; }
+.pc-switch[aria-checked="true"]  .pc-switch-label--off { opacity: .45; }
+.pc-switch[aria-checked="true"]  .pc-switch-label--on  {
+  color: var(--ink);
+}
+
+/* 轨道 */
+.pc-switch-track {
+  position: relative;
+  width: 32px;
+  height: 16px;
+  background: var(--bg-grad);
+  border-radius: 999px;
+  transition: background-color .25s ease;
+  flex: none;
+}
+.pc-switch[aria-checked="true"] .pc-switch-track {
   background: var(--accent);
-  border-color: var(--accent);
 }
-.pc-header-actions .pc-btn--toggle.is-on:hover {
-  color: #fff;
-  background: var(--accent-deep);
-  border-color: var(--accent-deep);
+.pc-switch[aria-checked="false"] .pc-switch-track {
+  background: var(--line-strong);
+}
+
+/* 滑块 */
+.pc-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--card);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  transition: transform .25s cubic-bezier(.4, .0, .2, 1);
+}
+.pc-switch[aria-checked="true"]  .pc-switch-thumb { transform: translateX(0); }
+.pc-switch[aria-checked="false"] .pc-switch-thumb { transform: translateX(16px); }
+
+.pc-dark .pc-switch-track {
+  background: rgba(255, 255, 255, 0.10);
+}
+.pc-dark .pc-switch[aria-checked="true"] .pc-switch-track {
+  background: var(--accent);
+}
+.pc-dark .pc-switch-thumb {
+  background: #fdfcf9;
 }
 
 /* ── 操作区 ─────────────────────────────────────────────

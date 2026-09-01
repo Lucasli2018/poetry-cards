@@ -24,10 +24,8 @@ import {
 } from './ui/storage-dialog.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
-// ── 本地优先模式（默认开启，即「经典诗词」） ─────────
-// 设计意图：默认就只从本地经典诗词库抽卡（70 首），不发起远程请求，
-// 既首屏秒开、加载更快，又避免了诗泉 API 限流 / 离线场景。
-// 用户主动关闭时才会去打诗泉 random。
+// ── 诗源:典藏诗库(本地经典,默认) / 随机一遇(诗泉全网) ───────
+// 开关位于 header。内部 key 沿用 v3.1 命名(localFirst),保持向后兼容。
 const LSK = { theme: 'pc_v3_theme', localFirst: 'pc_v3_local_first' };
 function setLs(k, v) { ls.setItem(k, v == null ? '' : String(v)); }
 function getLsBool(k, def) {
@@ -47,7 +45,7 @@ const els = {
   degraded:   $('pc-degraded'),
   recoverBtn: $('pc-recover'),
   srcNote:    $('pc-source-note'),
-  localFirstBtn: $('pc-local-first'),
+  localFirstSwitch: $('pc-local-first'),
   memoryOpenBtn: $('pc-memory-open'),
 };
 
@@ -165,25 +163,37 @@ async function loadLocalPoems() {
   }
 }
 
-// ── 本地优先 / 经典诗词 模式 ───────────────────────────
+// ── 诗源切换 · 典藏诗库 / 随机一遇 ───────────────────────
+//
+// 视觉是一个开关:默认开启「典藏诗库」(本地经典 70 首,无声可达),
+// 关闭后切到「随机一遇」(诗泉 API 全网随机)。
+// 文案全程不暴露本地/网络/离线等技术细节。
+//
+const POEM_SOURCE_LABEL = {
+  classic: '典藏诗库',
+  random:  '随机一遇',
+};
+
 function applyLocalFirst(on) {
-  if (!els.localFirstBtn) return;
-  els.localFirstBtn.classList.toggle('is-on', on);
-  els.localFirstBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  els.localFirstBtn.title = on
-    ? '已开启：仅从本地经典诗词库抽取（离线可用）· 点击切回全网'
-    : '已关闭：从全网抽取诗词 · 点击切换回本地经典诗词库';
-  els.localFirstBtn.textContent = '经典诗词';
+  if (!els.localFirstSwitch) return;
+  els.localFirstSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
+  els.localFirstSwitch.setAttribute(
+    'aria-label',
+    `诗源切换：当前${on ? POEM_SOURCE_LABEL.classic : POEM_SOURCE_LABEL.random}，点击切换`
+  );
+  els.localFirstSwitch.title = on
+    ? `当前：${POEM_SOURCE_LABEL.classic} · 点击切换至${POEM_SOURCE_LABEL.random}`
+    : `当前：${POEM_SOURCE_LABEL.random} · 点击切换至${POEM_SOURCE_LABEL.classic}`;
 }
 function toggleLocalFirst() {
   localFirst = !localFirst;
   setLs(LSK.localFirst, localFirst ? '1' : '0');
   applyLocalFirst(localFirst);
   if (localFirst) {
-    toast('已开启经典诗词，下次换诗从本地抽取');
+    toast(`已开启「${POEM_SOURCE_LABEL.classic}」,且听风吟`);
     if (!_busy) drawNew();
   } else {
-    toast('已切回全网诗词，下次换诗将请求网络');
+    toast(`已切换至「${POEM_SOURCE_LABEL.random}」,每次相逢皆新意`);
   }
 }
 
@@ -559,7 +569,14 @@ async function init() {
   //  - 用户关闭过（LS 存的是 '0'）→ 保持关闭
   localFirst = getLsBool(LSK.localFirst, true);
   applyLocalFirst(localFirst);
-  els.localFirstBtn?.addEventListener('click', toggleLocalFirst);
+  // switch 既响应鼠标点击,也支持键盘 Space/Enter 切换(无障碍)
+  els.localFirstSwitch?.addEventListener('click', toggleLocalFirst);
+  els.localFirstSwitch?.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      toggleLocalFirst();
+    }
+  });
 
   // 事件
   els.drawBtn.addEventListener('click', drawNew);
