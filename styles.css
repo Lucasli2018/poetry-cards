@@ -360,6 +360,45 @@ body {
   to   { transform: translateX(100%); }
 }
 
+/* ── 模式切换（本地优先） ─────────────────────────────── */
+.pc-mode-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+.pc-btn--toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  letter-spacing: .08em;
+  color: var(--sub);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform .18s ease, border-color .18s ease, color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.pc-btn--toggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.pc-btn--toggle.is-on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.pc-btn--toggle.is-on:hover {
+  color: #fff;
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+}
+
 /* ── 操作区 ───────────────────────────────────────────── */
 .pc-actions {
   display: flex;

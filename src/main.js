@@ -16,6 +16,7 @@ import { composeCard, downloadCard, shareCard } from './cards.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 const LS_THEME = 'pc_v3_theme';
+const LS_LOCAL_FIRST = 'pc_v3_local_first';
 
 // ── DOM ───────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -28,6 +29,7 @@ const els = {
   degraded:   $('pc-degraded'),
   recoverBtn: $('pc-recover'),
   srcNote:    $('pc-source-note'),
+  localFirstBtn: $('pc-local-first'),
 };
 
 // ── 存储（localStorage 不可用时降级内存） ─────────────────
@@ -54,6 +56,7 @@ let curImg = null;        // 当前背景图（HTMLImageElement，已 CORS）
 let curImgUrl = null;
 let curSource = 'none';   // 图源：LoremFlickr / Picsum / none
 let degraded = false;     // 是否已降级到本地库
+let localFirst = false;  // 本地优先模式（开启后抽卡只走本地库，不发远程）
 
 // 请求纪律三件套
 let _busy = false;
@@ -124,6 +127,38 @@ async function attemptRecover() {
 function pickLocalPoem() {
   if (!localPoems.length) return null;
   return localPoems[Math.floor(Math.random() * localPoems.length)];
+}
+
+// ── 本地库加载 ───────────────────────────────────────────
+async function loadLocalPoems() {
+  try {
+    const r = await fetch(LOCAL_POEMS_URL, { cache: 'no-cache' });
+    const j = r.ok ? await r.json() : [];
+    localPoems = Array.isArray(j) ? j : [];
+  } catch {
+    localPoems = [];
+  }
+}
+
+// ── 本地优先模式 ─────────────────────────────────────────
+function applyLocalFirst(on) {
+  if (!els.localFirstBtn) return;
+  els.localFirstBtn.classList.toggle('is-on', on);
+  els.localFirstBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  els.localFirstBtn.title = on
+    ? '已开启：优先使用本地诗词库（离线可用）· 点击切回远程'
+    : '开启后优先使用本地诗词库（离线可用）';
+}
+function toggleLocalFirst() {
+  localFirst = !localFirst;
+  ls.setItem(LS_LOCAL_FIRST, localFirst ? '1' : '');
+  applyLocalFirst(localFirst);
+  if (localFirst) {
+    toast('已开启本地优先，正在抽取本地诗词');
+    if (!_busy) drawNew();
+  } else {
+    toast('已切回远程诗词');
+  }
 }
 
 // ── 渲染 ──────────────────────────────────────────────────
@@ -267,17 +302,28 @@ async function drawNew() {
   showSkeleton();
 
   try {
-    // ── 请求 1：随机古诗词（唯一一次 random） ──
+    // ── 请求 1：随机古诗词 ──
+    // 本地优先模式：直接从本地库取，完全不发远程请求（离线可用）
     let poem = null;
     let fromApi = true;
-    try {
-      poem = await apiRequest('/api/poems/random', { maxRetries: 2, signal: ctrl.signal });
-    } catch (e) {
-      if (e && (e.name === 'AbortError' || e.code === 20)) return;
-      console.warn('random 失败，降级本地库', e);
+    if (localFirst) {
       poem = pickLocalPoem();
       fromApi = false;
-      showDegraded(!navigator.onLine || e?.kind === 'network' ? 'offline' : 'api');
+      if (!poem) {
+        showError('本地诗词库尚未就绪，请稍候再试');
+        toast('本地库尚未就绪，请稍候再试');
+        return;
+      }
+    } else {
+      try {
+        poem = await apiRequest('/api/poems/random', { maxRetries: 2, signal: ctrl.signal });
+      } catch (e) {
+        if (e && (e.name === 'AbortError' || e.code === 20)) return;
+        console.warn('random 失败，降级本地库', e);
+        poem = pickLocalPoem();
+        fromApi = false;
+        showDegraded(!navigator.onLine || e?.kind === 'network' ? 'offline' : 'api');
+      }
     }
     if (seq !== _seq) return;   // 已有更新请求，丢弃本次
 
@@ -374,6 +420,11 @@ async function init() {
   window.matchMedia?.('(prefers-color-scheme: dark)')
     .addEventListener?.('change', () => applyTheme(ls.getItem(LS_THEME) || 'auto'));
 
+  // 本地优先模式
+  localFirst = ls.getItem(LS_LOCAL_FIRST) === '1';
+  applyLocalFirst(localFirst);
+  els.localFirstBtn?.addEventListener('click', toggleLocalFirst);
+
   // 事件
   els.drawBtn.addEventListener('click', drawNew);
   els.dlBtn.addEventListener('click', onDownload);
@@ -395,15 +446,12 @@ async function init() {
 
   setBusyUI(false);
 
-  // 后台预载本地兜底库（不阻塞首屏）
-  fetch(LOCAL_POEMS_URL, { cache: 'no-cache' })
-    .then((r) => (r.ok ? r.json() : []))
-    .then((j) => { localPoems = Array.isArray(j) ? j : []; })
-    .catch(() => { localPoems = []; });
+  // 预载本地兜底库（首屏前就绪，保证「本地优先」立即可用）
+  await loadLocalPoems();
 
   registerSW();
 
-  // 首屏：自动来一张（1 次 random + 1 次图片）
+  // 首屏：自动来一张（本地优先模式走本地库；否则 1 次 random + 1 次图片）
   drawNew();
 }
 
