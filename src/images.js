@@ -162,6 +162,11 @@ function flickrTags(poem) {
 const IMG_TIMEOUT_MS = 8000;
 const AI_TIMEOUT_MS = 6000;   // AI 生成慢，单独给 6s；超时就换 Flickr
 
+// 显示图尺寸：540×720（3:4，适配方形/竖向手机显示，相比 600×800 减少 ~36% 像素）
+// 单次请求只取这一档；导出 Canvas 在 cards.js 里有更高分辨率目标。
+export const SCENE_IMG_W = 540;
+export const SCENE_IMG_H = 720;
+
 /**
  * 加载一张可用于 Canvas 导出的图片。
  * crossOrigin='anonymous' 是关键：不带它，canvas 会被 tainted，
@@ -192,24 +197,24 @@ function loadImage(url, timeout = IMG_TIMEOUT_MS) {
 }
 
 function pollinationsUrl(poem, opts = {}) {
-  const w = opts.width || 600;
-  const h = opts.height || 800;
+  const w = opts.width || SCENE_IMG_W;
+  const h = opts.height || SCENE_IMG_H;
   const seed = opts.seed ?? Date.now();
   const prompt = poemPrompt(poem);
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
 }
 
 function loremFlickrUrl(poem, opts = {}) {
-  const w = opts.width || 600;
-  const h = opts.height || 800;
+  const w = opts.width || SCENE_IMG_W;
+  const h = opts.height || SCENE_IMG_H;
   const seed = opts.seed ?? Date.now();
   const tags = flickrTags(poem);
   return `https://loremflickr.com/${w}/${h}/${encodeURIComponent(tags.join(','))}?lock=${seed}`;
 }
 
 function picsumUrl(opts = {}) {
-  const w = opts.width || 600;
-  const h = opts.height || 800;
+  const w = opts.width || SCENE_IMG_W;
+  const h = opts.height || SCENE_IMG_H;
   const seed = opts.seed ?? Date.now();
   return `https://picsum.photos/seed/poem${seed}/${w}/${h}`;
 }

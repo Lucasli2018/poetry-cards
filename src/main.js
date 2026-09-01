@@ -15,8 +15,17 @@ import { fetchSceneImage } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
-const LS_THEME = 'pc_v3_theme';
-const LS_LOCAL_FIRST = 'pc_v3_local_first';
+// ── 本地优先模式（默认开启，即「经典诗词」） ─────────
+// 设计意图：默认就只从本地经典诗词库抽卡（70 首），不发起远程请求，
+// 既首屏秒开、加载更快，又避免了诗泉 API 限流 / 离线场景。
+// 用户主动关闭时才会去打诗泉 random。
+const LSK = { theme: 'pc_v3_theme', localFirst: 'pc_v3_local_first' };
+function setLs(k, v) { ls.setItem(k, v == null ? '' : String(v)); }
+function getLsBool(k, def) {
+  const v = ls.getItem(k);
+  if (v == null) return def;
+  return v === '1' || v === 'true';
+}
 
 // ── DOM ───────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -56,7 +65,7 @@ let curImg = null;        // 当前背景图（HTMLImageElement，已 CORS）
 let curImgUrl = null;
 let curSource = 'none';   // 图源：LoremFlickr / Picsum / none
 let degraded = false;     // 是否已降级到本地库
-let localFirst = false;  // 本地优先模式（开启后抽卡只走本地库，不发远程）
+let localFirst = true;    // 「经典诗词」模式：默认开启，只走本地 70 首，不发远程
 
 // 请求纪律三件套
 let _busy = false;
@@ -140,24 +149,25 @@ async function loadLocalPoems() {
   }
 }
 
-// ── 本地优先模式 ─────────────────────────────────────────
+// ── 本地优先 / 经典诗词 模式 ───────────────────────────
 function applyLocalFirst(on) {
   if (!els.localFirstBtn) return;
   els.localFirstBtn.classList.toggle('is-on', on);
   els.localFirstBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
   els.localFirstBtn.title = on
-    ? '已开启：优先使用本地诗词库（离线可用）· 点击切回远程'
-    : '开启后优先使用本地诗词库（离线可用）';
+    ? '已开启：仅从本地经典诗词库抽取（离线可用）· 点击切回全网'
+    : '已关闭：从全网抽取诗词 · 点击切换回本地经典诗词库';
+  els.localFirstBtn.textContent = '经典诗词';
 }
 function toggleLocalFirst() {
   localFirst = !localFirst;
-  ls.setItem(LS_LOCAL_FIRST, localFirst ? '1' : '');
+  setLs(LSK.localFirst, localFirst ? '1' : '0');
   applyLocalFirst(localFirst);
   if (localFirst) {
-    toast('已开启本地优先，正在抽取本地诗词');
+    toast('已开启经典诗词，下次换诗从本地抽取');
     if (!_busy) drawNew();
   } else {
-    toast('已切回远程诗词');
+    toast('已切回全网诗词，下次换诗将请求网络');
   }
 }
 
@@ -207,11 +217,12 @@ function renderPostcard(poem, imgUrl, source) {
       </div>
     </article>`;
 
-  // 图源标注
+  // 图源提示：仅在完全无图（none）时给"已用水墨底纹"的兜底文案，
+  // 有图时不再展示第三方图源，保持卡片底部整洁。
   if (els.srcNote) {
     els.srcNote.textContent = source === 'none'
       ? '配图暂不可用（已用水墨底纹）'
-      : `配图 · ${source}`;
+      : '';
   }
   // 入场动画
   const card = $('pc-postcard');
@@ -246,7 +257,7 @@ function updateImageOnly(url, source) {
   if (els.srcNote) {
     els.srcNote.textContent = source === 'none'
       ? '配图暂不可用（已用水墨底纹）'
-      : `配图 · ${source}`;
+      : '';
   }
 }
 
@@ -398,9 +409,9 @@ function applyTheme(mode) {
   }
 }
 function cycleTheme() {
-  const cur = ls.getItem(LS_THEME) || 'auto';
+  const cur = ls.getItem(LSK.theme) || 'auto';
   const next = THEME_ORDER[(THEME_ORDER.indexOf(cur) + 1) % THEME_ORDER.length];
-  ls.setItem(LS_THEME, next);
+  setLs(LSK.theme, next);
   applyTheme(next);
   toast(next === 'auto' ? '主题：跟随系统' : (next === 'dark' ? '主题：暗色' : '主题：亮色'), 1400);
 }
@@ -415,13 +426,15 @@ function registerSW() {
 // ── 初始化 ───────────────────────────────────────────────
 async function init() {
   // 主题
-  applyTheme(ls.getItem(LS_THEME) || 'auto');
+  applyTheme(ls.getItem(LSK.theme) || 'auto');
   els.themeBtn?.addEventListener('click', cycleTheme);
   window.matchMedia?.('(prefers-color-scheme: dark)')
-    .addEventListener?.('change', () => applyTheme(ls.getItem(LS_THEME) || 'auto'));
+    .addEventListener?.('change', () => applyTheme(ls.getItem(LSK.theme) || 'auto'));
 
-  // 本地优先模式
-  localFirst = ls.getItem(LS_LOCAL_FIRST) === '1';
+  // 本地优先模式（默认开启 = 经典诗词）
+  //  - 首次进入、且用户从未显式关闭过 → 默认开启
+  //  - 用户关闭过（LS 存的是 '0'）→ 保持关闭
+  localFirst = getLsBool(LSK.localFirst, true);
   applyLocalFirst(localFirst);
   els.localFirstBtn?.addEventListener('click', toggleLocalFirst);
 
