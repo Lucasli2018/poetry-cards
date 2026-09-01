@@ -94,8 +94,12 @@ function measure(hostEl) {
   const r = hostEl.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
   return {
+    // 导出 canvas 像素 = CSS 像素 × dpr(锐化)
     W: Math.round(r.width  * dpr),
     H: Math.round(r.height * dpr),
+    // 字号锚:用 CSS 像素(未 dpr),保证字号与页面渲染一致
+    cssW: Math.round(r.width),
+    cssH: Math.round(r.height),
     dpr,
   };
 }
@@ -112,8 +116,10 @@ function measure(hostEl) {
 export function composeCard(poem, bgImg, hostEl) {
   const m = hostEl
     ? measure(hostEl)
-    : { W: 1080, H: 1440, dpr: 1 };   // 兜底：未传 host 时用 3:4 默认值
+    : { W: 1080, H: 1440, cssW: 1080, cssH: 1440, dpr: 1 };   // 兜底:未传 host 时用 3:4 默认值
   const { W: CARD_W, H: CARD_H, dpr } = m;
+  // 字号锚 = CSS 像素(未 dpr),与页面渲染 1:1
+  const FONT_W = m.cssW;
 
   const cv = document.createElement('canvas');
   cv.width = CARD_W;
@@ -157,23 +163,25 @@ export function composeCard(poem, bgImg, hostEl) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, fadeTop, CARD_W, CARD_H - fadeTop);
 
-  // ④ 内边框（细线，明信片感）
+  // ④ 内边框(细线,明信片感) — v3.2.9 用 FONT_W 锚定 CSS 像素,保证 dpr 缩放下视觉一致
   ctx.strokeStyle = C.line;
-  ctx.lineWidth = Math.max(1.5, Math.round(CARD_W / 540));
-  roundRect(ctx, 56, 56, CARD_W - 112, CARD_H - 112, 10);
+  ctx.lineWidth = Math.max(1.5, Math.round(FONT_W / 540));
+  roundRect(ctx, Math.round(FONT_W * 0.052), Math.round(FONT_W * 0.052),
+            CARD_W - Math.round(FONT_W * 0.104), CARD_H - Math.round(FONT_W * 0.104), 10);
   ctx.stroke();
 
-  // ⑤ 文字区
-  const padX = Math.round(CARD_W * 0.12);
+  // ⑤ 文字区 — 字号用 FONT_W(CSS 像素),间距也跟着 CSS 像素;但坐标仍在 canvas 空间
+  const padX = Math.round(FONT_W * 0.12);
   const textW = CARD_W - padX * 2;
   const centerX = CARD_W / 2;
   let y = imgH + Math.round(CARD_H * 0.035);
 
-  // 标题字号按卡片宽度缩放（基于 1080 基准 62px）
-  const titlePx = Math.max(40, Math.round(CARD_W * 0.057));
-  const metaPx  = Math.max(24, Math.round(CARD_W * 0.031));
-  const linePx  = Math.max(20, Math.round(CARD_W * 0.026));
-  const footPx  = Math.max(18, Math.round(CARD_W * 0.025));
+  // 标题字号按卡片宽度缩放(基于 1080 基准 62px)
+  // v3.2.9:用 FONT_W(CSS 像素)而非 CARD_W(已 dpr 锐化),保证字号与页面渲染 1:1
+  const titlePx = Math.max(28, Math.round(FONT_W * 0.057));
+  const metaPx  = Math.max(16, Math.round(FONT_W * 0.031));
+  const linePx  = Math.max(14, Math.round(FONT_W * 0.026));
+  const footPx  = Math.max(12, Math.round(FONT_W * 0.025));
 
   // 标题
   ctx.textAlign = 'center';
@@ -182,7 +190,7 @@ export function composeCard(poem, bgImg, hostEl) {
   ctx.font = `600 ${titlePx}px ${FONT_SERIF}`;
   const titleLines = wrapLines(ctx, poem.title || '无题', textW);
   for (const ln of titleLines) {
-    y += titlePx + 4;
+    y += titlePx + Math.round(titlePx * 0.07);
     ctx.fillText(ln, centerX, y);
   }
   y += Math.round(titlePx * 0.42);
@@ -196,7 +204,7 @@ export function composeCard(poem, bgImg, hostEl) {
   if (meta) {
     ctx.fillStyle = C.sub;
     ctx.font = `400 ${metaPx}px ${FONT_SANS}`;
-    y += metaPx + 6;
+    y += metaPx + Math.round(metaPx * 0.1);
     ctx.fillText(meta, centerX, y);
   }
   y += Math.round(metaPx * 0.85);
@@ -236,7 +244,7 @@ export function composeCard(poem, bgImg, hostEl) {
   ctx.textAlign = 'left';
   ctx.fillText('古韵抽卡 · 一图一诗', padX, footY);
 
-  const sealSize = Math.max(36, Math.round(CARD_W * 0.048));
+  const sealSize = Math.max(36, Math.round(FONT_W * 0.048));
   drawSeal(ctx, CARD_W - padX - sealSize, footY - sealSize + Math.round(footPx * 0.5), sealSize);
 
   return cv;

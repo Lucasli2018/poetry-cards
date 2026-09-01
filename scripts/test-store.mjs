@@ -244,9 +244,29 @@ function throws(fn, ErrorClass, label) {
   fav.remove(88888);   // 取消 1 个收藏
   eq(stats.snapshot().totalFavorites, 2, 'stats: 取消收藏后 totalFavorites=2');
 
+  // ⑤c topImagery 走 extractThemes(v3.2.9):用真实诗文本触发意象
+  fav.add({ id: 900100, title: '静夜思',
+            content: ['床前明月光', '疑是地上霜', '举头望明月', '低头思故乡'],
+            author: { name: '李白' },
+            dynasty: { name: '唐' },
+            type: { name: '五言绝句' } });
+  fav.add({ id: 900101, title: '山行',
+            content: ['远上寒山石径斜', '白云生处有人家', '停车坐爱枫林晚', '霜叶红于二月花'],
+            author: { name: '杜牧' },
+            dynasty: { name: '唐' },
+            type: { name: '七言绝句' } });
+  const imagery = stats.topImagery(5);
+  // v3.2.9:extractThemes key 是英文(mountain/autumn/moonlight/winter/night)
+  truthy(imagery.length > 0, 'stats: 真实诗文本 → topImagery 非空');
+  truthy(imagery.some(x => ['mountain','autumn','moonlight','winter','night','river','wind','cloud','bird'].includes(x.key)),
+    'stats: topImagery 命中英文意象 key(renderer 翻译为中文)');
+
   // ⑥ 取消收藏,朝代实时减少,但 totalDraws 不变
+  const before = stats.topDynasties(5).find(x => x.key === '唐');
   fav.remove(900001);
-  eq(stats.topDynasties(2)[0].count, 1, 'stats: 取消 1 唐 → 唐 count=1');
+  const td = stats.topDynasties(5);
+  const tang = td.find(x => x.key === '唐');
+  eq(tang.count, before.count - 1, 'stats: 取消 1 唐 → 唐 count -1');
   eq(stats.summary().totalDraws, 3, 'stats: 取消收藏不影响 totalDraws');
 
   // ⑦ reset = 清零 statsMeta + 清空 favorites

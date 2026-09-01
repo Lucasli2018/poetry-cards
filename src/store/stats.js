@@ -1,19 +1,20 @@
 // =============================================================
 // 古韵抽卡 v3.2.7 · 双源 stats store
-// 职责:4 个数字并存
-//   - totalDraws / todayDraws  → 走 statsMeta(累加,localStorage 持久化)
+// 职责:5 个数字并存
+//   - totalDraws / todayDraws   → 走 statsMeta(累加,localStorage 持久化)
+//   - totalFavorites            → favorites 实时(size)
 //   - topDynasties / topImagery → 走 favorites 实时计算
 //
 // 数据源策略:
 //   - 累计/今日 数字 必须「每次抽卡都 +1」,因为这是「使用频率」指标;
 //     用过 v3.1 累加型 schema(statsMeta),自然持久,跨日靠 rolloverIfNeeded。
 //   - 朝代/意象 必须是「用户主动喜欢」,所以从 favorites 实时聚合;
-//     取消收藏立刻从统计消失。
+//     取消收藏立刻从统计消失。意象从 poem.title/content 提取(extractThemes)。
 //
 // 与 main.js 的接口:
 //   stats.onDraw(poem, themes)   // 累加 totalDraws / todayDraws(不入朝代/意象 counter)
 //   stats.reset()                // 清零 statsMeta + 清空 favorites
-//   stats.snapshot()             // 4 个数字一起返回
+//   stats.snapshot()             // 5 个数字一起返回
 //
 // 旧 favoritesStats(v3.2.5~v3.2.6)已废弃,本模块取代之。
 // =============================================================
@@ -21,6 +22,7 @@
 import {
   KEY, DEFAULTS, parseSafe, dump, rolloverIfNeeded, normalizePoem,
 } from './schema.js';
+import { extractThemes } from '../images.js';
 
 /**
  * 工厂:接收 storage 适配器 + favoritesStore(都必填)。
@@ -74,12 +76,18 @@ export function createStatsStore(storage, favoritesStore) {
   }
 
   // ── 朝代 / 意象:从 favorites 实时算 ────────────────────
+  // 意象来源:extractThemes(poem) — 从 title/content 提取主导意象(山/月/风/雪/梅...)
   function tally(items) {
     const dynastyCounter = {};
     const imageryCounter = {};
     for (const it of items) {
       if (it.dynasty) {
         dynastyCounter[it.dynasty] = (dynastyCounter[it.dynasty] || 0) + 1;
+      }
+      // 意象:每首诗取 top 2,逐个 +1
+      const themes = extractThemes(it);
+      for (const t of themes) {
+        imageryCounter[t] = (imageryCounter[t] || 0) + 1;
       }
     }
     return { dynastyCounter, imageryCounter };
