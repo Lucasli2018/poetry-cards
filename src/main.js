@@ -10,7 +10,7 @@
 //   ④ 令牌桶 + 熔断（api.js）：从源头压住 429
 // =============================================================
 
-import { apiRequest, resetBreaker } from './api.js';
+import { apiRequest, resetBreaker } from './net/api.js';
 import { fetchSceneImage } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
 

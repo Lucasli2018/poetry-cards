@@ -11,23 +11,27 @@
 
 const CACHE_NAME = 'poetry-cards-v3.0';
 const PRECACHE = [
+  // 页面骨架
   './',
   './index.html',
   './styles.css',
+  './manifest.webmanifest',
+  // 应用代码
   './src/main.js',
-  './src/api.js',
-  './src/rate-limit.js',
-  './src/circuit-breaker.js',
   './src/images.js',
   './src/cards.js',
   './src/poems.local.json',
-  './manifest.webmanifest',
-  './favicon.svg',
-  './favicon.ico',
-  './favicon-32.png',
-  './apple-touch-icon.png',
-  './icon-192.png',
-  './icon-512.png',
+  // 请求治理（net 子模块）
+  './src/net/api.js',
+  './src/net/rate-limit.js',
+  './src/net/circuit-breaker.js',
+  // 图标
+  './assets/icons/favicon.svg',
+  './assets/icons/favicon.ico',
+  './assets/icons/favicon-32.png',
+  './assets/icons/apple-touch-icon.png',
+  './assets/icons/icon-192.png',
+  './assets/icons/icon-512.png',
 ];
 
 async function networkFirst(request) {

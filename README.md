@@ -57,19 +57,21 @@ poetry-cards/
 ├── styles.css              文艺清新主题（亮/暗双套 CSS 变量）
 ├── manifest.webmanifest    PWA 清单
 ├── sw.js                   Service Worker（网络优先 + 离线回退）
-├── favicon.svg / .ico / -32.png
-├── apple-touch-icon.png    180×180
-├── icon-192.png / icon-512.png       PWA 图标
+├── assets/
+│   └── icons/              favicon.svg/.ico/-32.png · apple-touch-icon.png · icon-192/512.png
 ├── scripts/
-│   └── make_favicon.py     纯标准库生成图标（struct+zlib 手写 PNG/ICO）
+│   └── make_favicon.py     纯标准库生成图标（struct+zlib 手写 PNG/ICO，输出至 assets/icons）
+├── docs/
+│   └── PLAN-archive.md     v2.x 规划归档
 └── src/
     ├── main.js             主流程：一图一诗 · 请求纪律 · 事件
-    ├── api.js              统一请求层：令牌桶→退避(全抖动)→熔断→失败分类
-    ├── rate-limit.js       令牌桶（含空桶死锁修复）
-    ├── circuit-breaker.js  熔断器
     ├── images.js           意象提取 + 图片多源守护
     ├── cards.js            Canvas 合成明信片 + 下载 + 分享
-    └── poems.local.json    本地兜底诗词库（70 首）
+    ├── poems.local.json    本地兜底诗词库（70 首）
+    └── net/                网络层（统一请求 + 限流 + 熔断）
+        ├── api.js          统一请求层：令牌桶→退避(全抖动)→熔断→失败分类
+        ├── rate-limit.js   令牌桶（含空桶死锁修复）
+        └── circuit-breaker.js  熔断器
 ```
 
 ## 数据流

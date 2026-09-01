@@ -117,7 +117,8 @@ def build_ico(sizes, png_bytes_list):
 
 
 def main():
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else '.'
+    # 默认输出到 assets/icons/（与项目结构保持一致）
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join('assets', 'icons')
     os.makedirs(out_dir, exist_ok=True)
 
     # favicon.ico 多尺寸
