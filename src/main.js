@@ -11,8 +11,17 @@
 // =============================================================
 
 import { apiRequest, resetBreaker } from './net/api.js';
-import { fetchSceneImage } from './images.js';
+import { fetchSceneImage, extractThemes } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
+import { createHistoryStore } from './store/history.js';
+import { createStatsStore } from './store/stats.js';
+import { createFavoritesStore } from './store/favorites.js';
+import { createMemoryPanel } from './ui/memory-panel.js';
+import { renderFavorites, renderHistory, renderStats } from './ui/renderers.js';
+import {
+  snapshotForExport, downloadSnapshot, parseSnapshot,
+  mergeImport, readFileAsText,
+} from './ui/storage-dialog.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 // ── 本地优先模式（默认开启，即「经典诗词」） ─────────
@@ -39,6 +48,7 @@ const els = {
   recoverBtn: $('pc-recover'),
   srcNote:    $('pc-source-note'),
   localFirstBtn: $('pc-local-first'),
+  memoryOpenBtn: $('pc-memory-open'),
 };
 
 // ── 存储（localStorage 不可用时降级内存） ─────────────────
@@ -72,6 +82,12 @@ let _busy = false;
 let _seq = 0;
 let _abort = null;
 let _lastClickAt = 0;
+
+// v3.1 个性化记忆 store(由 init() 在拿到 ls 后实例化)
+let history = null;
+let stats = null;
+let favorites = null;
+let memoryPanel = null;
 
 // ── 工具 ──────────────────────────────────────────────────
 function escapeHtml(s) {
@@ -193,6 +209,9 @@ function renderPostcard(poem, imgUrl, source) {
   const verse = (poem.content || [])
     .map((l) => `<p>${escapeHtml(l)}</p>`).join('');
 
+  // v3.1 收藏态:渲染时即时反映
+  const isFav = favorites?.has(poem.id) ?? false;
+
   els.stage.innerHTML = `
     <article class="postcard" id="pc-postcard">
       <div class="postcard-media">
@@ -206,7 +225,17 @@ function renderPostcard(poem, imgUrl, source) {
           : `<div class="postcard-media--empty"></div>`}
       </div>
       <div class="postcard-body">
-        <h2 class="postcard-title">${escapeHtml(poem.title)}</h2>
+        <div class="postcard-head">
+          <h2 class="postcard-title">${escapeHtml(poem.title)}</h2>
+          <button class="pc-fav-btn ${isFav ? 'is-fav' : ''}" type="button"
+                  title="${isFav ? '已收藏 · 点击取消' : '收藏这首诗'}"
+                  aria-label="${isFav ? '取消收藏' : '收藏'}"
+                  aria-pressed="${isFav ? 'true' : 'false'}">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+            </svg>
+          </button>
+        </div>
         ${meta ? `<p class="postcard-meta">${meta}</p>` : ''}
         <div class="postcard-rule"></div>
         <div class="postcard-verse">${verse}</div>
@@ -354,6 +383,12 @@ async function drawNew() {
     curSource = source;
     renderPostcard(poem, url, source);
 
+    // v3.1 个性化记忆:成功渲染后写库(失败/取消不写)
+    //   history.push 内部做 normalizePoem,任何字段缺失都能容错
+    //   stats.onDraw 接受 themes(由 extractThemes 取 top 2 主题词)
+    history?.push(poem);
+    stats?.onDraw(poem, extractThemes(poem));
+
     if (fromApi && degraded) hideDegraded();
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
@@ -395,6 +430,87 @@ async function onShare() {
     console.error(e);
     toast('分享失败，可点下载保存图片');
   }
+}
+
+// ── 收藏切换 ──────────────────────────────────────────────
+function toggleFavorite() {
+  if (!curPoem || !favorites) return;
+  const r = favorites.toggle(curPoem);
+  if (r.error) {
+    toast(r.error + ' · 请在收藏夹清理旧诗');
+    return;
+  }
+  // 同步按钮态(就地更新,不动整张卡片避免重播入场动画)
+  const btn = els.stage.querySelector('.pc-fav-btn');
+  if (btn) {
+    btn.classList.toggle('is-fav', r.favorited);
+    btn.setAttribute('aria-pressed', r.favorited ? 'true' : 'false');
+    btn.title = r.favorited ? '已收藏 · 点击取消' : '收藏这首诗';
+  }
+  toast(r.favorited ? `已收藏《${curPoem.title || '无题'}》` : '已取消收藏');
+}
+
+// ── 数据迁移(导出 / 导入) ────────────────────────────────
+function onExportBackup() {
+  try {
+    const snap = snapshotForExport(ls);
+    downloadSnapshot(snap);
+    toast(`已导出备份(${snap.favorites.items.length} 收藏 · ${snap.history.items.length} 历史)`);
+  } catch (e) {
+    console.error(e);
+    toast('导出失败,请稍后重试');
+  }
+}
+
+async function onImportBackup() {
+  // 用隐藏的 <input type=file> 触发文件选择
+  let input = document.getElementById('pc-import-file');
+  if (!input) {
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'pc-import-file';
+    input.accept = '.json,application/json';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+  }
+  input.value = '';   // 允许重选同一文件
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    input.onchange = null;
+    if (!file) return;
+    try {
+      const text = await readFileAsText(file);
+      const snap = parseSnapshot(text);
+      const statsCount = snap.statsMeta?.totalDraws ?? 0;
+      if (!confirm(`即将合并导入:\n· 收藏 ${snap.favorites.items.length} 首\n· 历史 ${snap.history.items.length} 条\n· 统计 ${statsCount} 次累计\n\n同 ID 收藏/历史按时间戳去重,统计会覆盖。\n\n继续?`)) {
+        return;
+      }
+      const r = mergeImport(ls, snap);
+      // 内存中的 store 缓存需要下次读取时刷新 — reload 是最简单稳妥的做法
+      toast(`导入完成 · 新增收藏 ${r.addedFav} · 新增历史 ${r.addedHist}`);
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      toast('导入失败: ' + e.message);
+    }
+  };
+  input.click();
+}
+
+// ── 记忆面板刷新 ─────────────────────────────────────────
+// 把三个 store 的快照拼成一个对象,字段以 tab 名命名(favorites/history/stats),
+// renderers 按需读取对应字段。这样既不污染命名空间,也方便测试注入。
+function refreshMemoryPanel() {
+  if (!memoryPanel || !favorites || !history || !stats) return;
+  memoryPanel.update({
+    favorites: { items: favorites.list() },
+    history:   { items: history.list() },
+    stats: {
+      totalDraws:   stats.get().totalDraws,
+      todayDraws:   stats.get().todayDraws,
+      topDynasties: stats.topDynasties(5),
+      topImagery:   stats.topImagery(5),
+    },
+  });
 }
 
 // ── 主题 ──────────────────────────────────────────────────
@@ -447,7 +563,9 @@ async function init() {
   // 明信片配图上的「换图」按钮（事件委托：renderPostcard 会重建 DOM）
   els.stage.addEventListener('click', (e) => {
     const sw = e.target.closest('.pc-swap-img');
-    if (sw) { e.preventDefault(); swapImage(); }
+    if (sw) { e.preventDefault(); swapImage(); return; }
+    const fb = e.target.closest('.pc-fav-btn');
+    if (fb) { e.preventDefault(); toggleFavorite(); }
   });
   document.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' || e.repeat) return;
@@ -458,6 +576,31 @@ async function init() {
   });
 
   setBusyUI(false);
+
+  // v3.1 个性化记忆:实例化 history / stats / favorites store(注入 ls 适配器)
+  history = createHistoryStore(ls);
+  stats = createStatsStore(ls);
+  favorites = createFavoritesStore(ls);
+
+  // v3.1 记忆面板:三个 tab 共享 modal
+  memoryPanel = createMemoryPanel();
+  memoryPanel.mount(document.body);
+  memoryPanel.registerRenderer('favorites', (snap) => renderFavorites(snap, {
+    onRemove: (id) => { favorites.remove(id); refreshMemoryPanel(); toast('已取消收藏'); },
+    onClear:  ()    => { favorites.clear();  refreshMemoryPanel(); toast('已清空收藏'); },
+  }));
+  memoryPanel.registerRenderer('history', (snap) => renderHistory(snap, {
+    onClear:  ()    => { history.clear();    refreshMemoryPanel(); toast('已清空历史'); },
+  }));
+  memoryPanel.registerRenderer('stats', (snap) => renderStats(snap, {
+    onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已重置统计'); },
+    onExport: ()    => { onExportBackup(); },
+    onImport: ()    => { onImportBackup(); },
+  }));
+  els.memoryOpenBtn?.addEventListener('click', () => {
+    refreshMemoryPanel();
+    memoryPanel.open(memoryPanel.currentTab);
+  });
 
   // 预载本地兜底库（首屏前就绪，保证「本地优先」立即可用）
   await loadLocalPoems();
