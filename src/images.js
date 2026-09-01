@@ -162,10 +162,13 @@ function flickrTags(poem) {
 const IMG_TIMEOUT_MS = 8000;
 const AI_TIMEOUT_MS = 6000;   // AI 生成慢，单独给 6s；超时就换 Flickr
 
-// 显示图尺寸：540×720（3:4，适配方形/竖向手机显示，相比 600×800 减少 ~36% 像素）
-// 单次请求只取这一档；导出 Canvas 在 cards.js 里有更高分辨率目标。
+// 显示图尺寸：540×180（3:1 横条,与展示卡片图区 1/3 高度一致）
+//   - 宽 540 适合手机宽度(360~414px)显示且 2x 锐化足够
+//   - 高 180 = 540 / 3,严格匹配展示比例,无拉伸/裁切
+//   - 体积:540×180×4 字节 ≈ 380KB 原始(PNG 后一般 < 200KB)
+// 单次请求只取这一档；导出 Canvas 在 cards.js 里按 DOM 实际尺寸 + dpr 锐化。
 export const SCENE_IMG_W = 540;
-export const SCENE_IMG_H = 720;
+export const SCENE_IMG_H = 180;
 
 /**
  * 加载一张可用于 Canvas 导出的图片。

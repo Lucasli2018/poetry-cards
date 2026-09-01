@@ -1,15 +1,15 @@
 // =============================================================
-// Service Worker · 古韵抽卡 v3.0
+// Service Worker · 古韵抽卡 v3.2
 //
 // 缓存策略（按更新频率分层）：
 //   - 导航(HTML) + JS 模块 → 网络优先：保证用户永远拿到最新代码，
 //     离线时回退缓存。改过 CACHE_NAME 后旧缓存会在 activate 时清掉。
 //   - 图标 / manifest / 本地诗词库 → 缓存优先：几乎不变，提速用。
 //   - 诗泉 API → 网络优先 + 缓存兜底（离线可读到上一次结果）
-//   - 图片 CDN(LoremFlickr/Picsum) → 不缓存（体积大、每次都变）
+//   - 图片 CDN(LoremFlickr/Picsum/Pollinations) → 不缓存（体积大、每次都变）
 // =============================================================
 
-const CACHE_NAME = 'poetry-cards-v3.0';
+const CACHE_NAME = 'poetry-cards-v3.2';
 const PRECACHE = [
   // 页面骨架
   './',

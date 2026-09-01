@@ -404,12 +404,18 @@ async function drawNew() {
 }
 
 // ── 导出 / 分享 ───────────────────────────────────────────
+// hostEl 严格 = 当前 DOM 明信片节点,canvas 尺寸按其实际宽高 + dpr 锐化
+function getPostcardHost() {
+  return document.getElementById('pc-postcard');
+}
+
 async function onDownload() {
   if (!curPoem) return;
   try {
     toast('正在合成卡片…');
-    const cv = composeCard(curPoem, curImg);
-    const name = await downloadCard(cv, curPoem);
+    const host = getPostcardHost();
+    const cv = composeCard(curPoem, curImg, host);
+    const name = await downloadCard(cv, curPoem, host);
     toast(`已下载 ${name}`);
   } catch (e) {
     console.error(e);
@@ -420,7 +426,8 @@ async function onDownload() {
 async function onShare() {
   if (!curPoem) return;
   try {
-    const cv = composeCard(curPoem, curImg);
+    const host = getPostcardHost();
+    const cv = composeCard(curPoem, curImg, host);
     const r = await shareCard(cv, curPoem);
     if (r === 'shared') toast('已分享');
     else if (r === 'copied') toast('已复制诗词文案到剪贴板');

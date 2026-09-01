@@ -124,29 +124,6 @@ body {
   transform: translateY(-1px);
 }
 
-/* v3.1 · header 上的「记忆」入口按钮,与主题按钮同款但稍紧凑 */
-.pc-btn--header {
-  flex: none;
-  padding: 7px 12px;
-  font-family: var(--font-sans);
-  font-size: 12.5px;
-  letter-spacing: .06em;
-  color: var(--sub);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-btn);
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: color .2s, border-color .2s, transform .2s;
-  display: inline-flex; align-items: center; gap: 4px;
-}
-.pc-btn--header:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  transform: translateY(-1px);
-}
-.pc-btn--header svg { display: block; }
-
 /* ── 降级横幅 ─────────────────────────────────────────── */
 .pc-degraded {
   display: none;
@@ -181,6 +158,8 @@ body {
 .pc-stage { min-height: 420px; }
 
 .postcard {
+  display: flex;            /* 让 .postcard-media (1/3) 与 .postcard-body (2/3) 自动均分高度 */
+  flex-direction: column;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
@@ -189,15 +168,23 @@ body {
   opacity: 0;
   transform: translateY(14px);
   transition: opacity .55s cubic-bezier(.22,.61,.36,1), transform .55s cubic-bezier(.22,.61,.36,1);
+  /* 卡片基准高度(图 1/3 ≈ 170px + 诗 2/3 ≈ 340px ≈ 510px),flex 比才有意义 */
+  min-height: 480px;
 }
 .postcard.is-in { opacity: 1; transform: none; }
 
-/* 配图区 */
+/* 配图区(占卡片 1/3 高度,诗占主导 2/3)
+   - .postcard 是 flex column, .postcard-media 固定 flex:1, .postcard-body flex:2
+   - 这样无论卡片多高,图始终是 1/3,诗始终是 2/3 — 稳 */
 .postcard-media {
   position: relative;
-  aspect-ratio: 3 / 4;
+  flex: 1 1 33.333%;      /* 占卡片高度 1/3;基线确保小图下不被 0 撑掉 */
+  min-height: 0;
   background: linear-gradient(135deg, #e8e4d9 0%, #d5cfc0 50%, #c2bba9 100%);
   overflow: hidden;
+}
+.pc-dark .postcard-media {
+  background: linear-gradient(135deg, #2e2b27 0%, #3a3630 50%, #464139 100%);
 }
 .pc-dark .postcard-media {
   background: linear-gradient(135deg, #2e2b27 0%, #3a3630 50%, #464139 100%);
@@ -308,8 +295,13 @@ body {
 
 /* 文字区 */
 .postcard-body {
-  padding: 26px 28px 20px;
+  flex: 2 1 66.666%;       /* 占卡片高度 2/3 */
+  min-height: 0;
+  padding: 22px 28px 18px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .postcard-title {
@@ -475,13 +467,19 @@ body {
   border-color: var(--accent-deep);
 }
 
-/* ── 操作区 ───────────────────────────────────────────── */
+/* ── 操作区 ─────────────────────────────────────────────
+   三档分层:
+     · .pc-btn--primary  主操作(实心青瓷,投影,略大)
+     · .pc-btn           次操作(描边胶囊,hover 青瓷)
+     · .pc-btn--header   标签/开关(小型,顶部用)
+*/
 .pc-actions {
   display: flex;
   gap: 10px;
   margin-top: 22px;
 }
 
+/* 基础按钮 · 胶囊描边 · 字色与卡片字色一致 */
 .pc-btn {
   flex: 1;
   display: inline-flex;
@@ -491,35 +489,67 @@ body {
   padding: 13px 14px;
   font-family: var(--font-sans);
   font-size: 14px;
+  font-weight: 500;
   letter-spacing: .06em;
   color: var(--ink);
   background: var(--card);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-btn);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: transform .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+  transition: transform .18s ease, border-color .18s ease, color .18s ease,
+              background-color .18s ease, box-shadow .18s ease;
 }
 .pc-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--accent-soft);
   box-shadow: var(--shadow-md);
 }
 .pc-btn:active:not(:disabled) { transform: translateY(0); }
 .pc-btn:disabled { opacity: .45; cursor: not-allowed; }
 
+/* 主操作 · 实心 · 略宽 · 投影更深 */
 .pc-btn--primary {
-  flex: 1.25;
+  flex: 1.35;
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
+  box-shadow: var(--shadow-md);
 }
 .pc-btn--primary:hover:not(:disabled) {
   color: #fff;
   background: var(--accent-deep);
   border-color: var(--accent-deep);
+  box-shadow: var(--shadow-lg);
 }
+
+/* 头部标签按钮 · 小一号字 · 透明背景 · 与 .pc-btn 拉开层级 */
+.pc-btn--header {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: var(--sub);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, color .18s ease,
+              background-color .18s ease;
+}
+.pc-btn--header:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.pc-btn--header svg { display: block; }
 
 /* 按钮内 spinner（加载时显示） */
 .pc-btn-spinner {
@@ -557,38 +587,7 @@ body {
   border-radius: 4px;
 }
 
-/* ── 按钮说明 ───────────────────────────────────────────── */
-.pc-btn-legend {
-  list-style: none;
-  margin: 18px 2px 0;
-  padding: 14px 18px 12px;
-  font-size: 12px;
-  line-height: 1.9;
-  letter-spacing: .04em;
-  color: var(--sub);
-  background: var(--card);
-  border: 1px dashed var(--line);
-  border-radius: 14px;
-}
-.pc-btn-legend li {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-.pc-btn-legend li + li { margin-top: 1px; }
-.pc-btn-legend b {
-  flex: none;
-  min-width: 64px;
-  font-family: var(--font-serif);
-  font-weight: 600;
-  font-size: 12.5px;
-  letter-spacing: .12em;
-  color: var(--ink-soft);
-}
-.pc-btn-legend span {
-  flex: 1;
-  min-width: 0;
-}
+/* (v3.2 删除了按钮说明区,样式移除) */
 
 /* ── Toast ────────────────────────────────────────────── */
 .pc-toast {

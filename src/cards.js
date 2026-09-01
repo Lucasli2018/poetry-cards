@@ -1,26 +1,30 @@
 // =============================================================
 // 明信片卡片合成 · 导出 PNG · 分享
 //
-// 输出规格：1080 × 1440 竖版（适合朋友圈/微博分享图、手机壁纸，
-//         PNG 体积更小，比原 1200×1600 减少约 30%，但人眼难辨差异）
-// 比例：3:4 竖版，与 DOM 显示的 postcard-media (3:4) 完全一致，
-//       导出时无需做比例裁切，保真度更高
-// 版式（横排明信片）：
+// 输出规格：严格跟随 DOM 实际展示尺寸（导出与展示 1:1），
+//   通过 hostEl.getBoundingClientRect() 拿真实 px；
+//   然后按 dpr(devicePixelRatio) 锐化输出，
+//   确保 retina 屏下导出的 PNG 清晰不糊。
+// 比例：上图 1/3 + 下诗 2/3（与 styles.css .postcard-media 比例一致）。
+// 版式（竖排明信片）：
 //   ┌──────────────┐
-//   │   背景图     │  ← cover 裁切铺满整卡
+//   │   背景图     │  ← cover 裁切，占卡片 1/3 高度
 //   │  （诗意配图） │
-//   │ ── 渐变遮罩 ──│  ← 下半部渐变为米白，保证文字可读
+//   ├──────────────┤
 //   │   《诗题》    │
 //   │   唐 · 李白   │
 //   │  ──────────  │
-//   │  诗文横排居中 │
+//   │  诗文横排居中 │  ← 占卡片 2/3 高度
 //   │              │
-//   │  古韵抽卡 ✦ 诗泉│
+//   │  古韵抽卡 ✦ 诗│
 //   └──────────────┘
 // =============================================================
 
-const CARD_W = 1080;
-const CARD_H = 1440;
+// 图区在卡面高度中的占比（与 styles.css .postcard-media 保持同步）
+const IMG_RATIO = 1 / 3;
+
+// dpr 上限:防止 4K 屏导出 PNG 巨大；2x 已足够清晰且控体积
+const DPR_CAP = 2;
 
 // 文艺清新配色
 const C = {
@@ -79,14 +83,35 @@ function drawSeal(ctx, x, y, size) {
   ctx.restore();
 }
 
+/**
+ * 计算导出尺寸：基础 px = DOM 真实尺寸；最终 px = 基础 × dpr（封顶 DPR_CAP）。
+ * @param {HTMLElement} hostEl  明信片 host 元素
+ * @returns {{W:number, H:number, dpr:number}}
+ */
+function measure(hostEl) {
+  const r = hostEl.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+  return {
+    W: Math.round(r.width  * dpr),
+    H: Math.round(r.height * dpr),
+    dpr,
+  };
+}
+
 // ── 主绘制 ───────────────────────────────────────────────
 /**
  * 把「诗 + 图」合成到一张 Canvas。
- * @param {object} poem  诗泉返回结构 {title, content[], author:{name}, dynasty:{name}, type:{name}}
+ * 严格按 DOM 实际尺寸 + dpr 锐化，导出 = 展示 1:1。
+ * @param {object} poem   诗泉返回结构 {title, content[], author:{name}, dynasty:{name}, type:{name}}
  * @param {HTMLImageElement|null} bgImg  已带 CORS 的背景图；null 则用水墨渐变
+ * @param {HTMLElement} [hostEl]  明信片 DOM 节点（用于量尺寸；可选，向后兼容）
  * @returns {HTMLCanvasElement}
  */
-export function composeCard(poem, bgImg) {
+export function composeCard(poem, bgImg, hostEl) {
+  const { W: CARD_W, H: CARD_H } = hostEl
+    ? measure(hostEl)
+    : { W: 1080, H: 1440 };   // 兜底：未传 host 时用 3:4 默认值
+
   const cv = document.createElement('canvas');
   cv.width = CARD_W;
   cv.height = CARD_H;
@@ -96,8 +121,8 @@ export function composeCard(poem, bgImg) {
   ctx.fillStyle = C.paper;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 
-  // ② 背景图：cover 裁切，占据上方 62%
-  const imgH = Math.round(CARD_H * 0.62);
+  // ② 背景图：cover 裁切，占据上方 IMG_RATIO（≈1/3）
+  const imgH = Math.round(CARD_H * IMG_RATIO);
   if (bgImg && bgImg.width && bgImg.height) {
     const scale = Math.max(CARD_W / bgImg.width, imgH / bgImg.height);
     const dw = bgImg.width * scale;
@@ -121,7 +146,7 @@ export function composeCard(poem, bgImg) {
   }
 
   // ③ 渐变遮罩：图片下缘 → 米白，让文字区自然过渡
-  const fadeTop = imgH - 180;
+  const fadeTop = Math.max(imgH - Math.round(CARD_H * 0.06), imgH - 80);
   const grad = ctx.createLinearGradient(0, fadeTop, 0, imgH + 40);
   grad.addColorStop(0, 'rgba(253,252,249,0)');
   grad.addColorStop(0.55, 'rgba(253,252,249,0.82)');
@@ -131,27 +156,33 @@ export function composeCard(poem, bgImg) {
 
   // ④ 内边框（细线，明信片感）
   ctx.strokeStyle = C.line;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = Math.max(1.5, Math.round(CARD_W / 540));
   roundRect(ctx, 56, 56, CARD_W - 112, CARD_H - 112, 10);
   ctx.stroke();
 
   // ⑤ 文字区
-  const padX = 130;
+  const padX = Math.round(CARD_W * 0.12);
   const textW = CARD_W - padX * 2;
   const centerX = CARD_W / 2;
-  let y = imgH + 40;
+  let y = imgH + Math.round(CARD_H * 0.035);
+
+  // 标题字号按卡片宽度缩放（基于 1080 基准 62px）
+  const titlePx = Math.max(40, Math.round(CARD_W * 0.057));
+  const metaPx  = Math.max(24, Math.round(CARD_W * 0.031));
+  const linePx  = Math.max(20, Math.round(CARD_W * 0.026));
+  const footPx  = Math.max(18, Math.round(CARD_W * 0.025));
 
   // 标题
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = C.ink;
-  ctx.font = `600 62px ${FONT_SERIF}`;
+  ctx.font = `600 ${titlePx}px ${FONT_SERIF}`;
   const titleLines = wrapLines(ctx, poem.title || '无题', textW);
   for (const ln of titleLines) {
-    y += 66;
+    y += titlePx + 4;
     ctx.fillText(ln, centerX, y);
   }
-  y += 26;
+  y += Math.round(titlePx * 0.42);
 
   // 作者 · 朝代 · 体裁
   const meta = [
@@ -161,11 +192,11 @@ export function composeCard(poem, bgImg) {
   ].filter(Boolean).join(' · ');
   if (meta) {
     ctx.fillStyle = C.sub;
-    ctx.font = `400 34px ${FONT_SANS}`;
-    y += 40;
+    ctx.font = `400 ${metaPx}px ${FONT_SANS}`;
+    y += metaPx + 6;
     ctx.fillText(meta, centerX, y);
   }
-  y += 44;
+  y += Math.round(metaPx * 0.85);
 
   // 细分隔线
   ctx.strokeStyle = C.line;
@@ -174,7 +205,7 @@ export function composeCard(poem, bgImg) {
   ctx.moveTo(centerX - 90, y);
   ctx.lineTo(centerX + 90, y);
   ctx.stroke();
-  y += 62;
+  y += Math.round(metaPx * 1.6);
 
   // ⑥ 诗文正文（横排居中）
   const lines = [];
@@ -182,11 +213,11 @@ export function composeCard(poem, bgImg) {
     lines.push(...wrapLines(ctx, raw, textW));
   }
   // 自适应字号：行数多则缩小
-  let fontSize = 46;
-  let lineGap = 78;
-  if (lines.length > 12) { fontSize = 34; lineGap = 58; }
-  else if (lines.length > 8) { fontSize = 39; lineGap = 66; }
-  else if (lines.length > 6) { fontSize = 43; lineGap = 72; }
+  let fontSize = Math.max(linePx, Math.round(linePx * 1.4));
+  let lineGap = Math.round(fontSize * 1.65);
+  if (lines.length > 12) { fontSize = linePx; lineGap = Math.round(fontSize * 1.55); }
+  else if (lines.length > 8) { fontSize = Math.round(linePx * 1.2); lineGap = Math.round(fontSize * 1.6); }
+  else if (lines.length > 6) { fontSize = Math.round(linePx * 1.32); lineGap = Math.round(fontSize * 1.65); }
 
   ctx.fillStyle = C.ink;
   ctx.font = `400 ${fontSize}px ${FONT_SERIF}`;
@@ -196,13 +227,14 @@ export function composeCard(poem, bgImg) {
   }
 
   // ⑦ 底部落款 + 朱砂印
-  const footY = CARD_H - 118;
+  const footY = CARD_H - Math.round(CARD_H * 0.082);
   ctx.fillStyle = C.sub;
-  ctx.font = `400 27px ${FONT_SANS}`;
+  ctx.font = `400 ${footPx}px ${FONT_SANS}`;
   ctx.textAlign = 'left';
   ctx.fillText('古韵抽卡 · 一图一诗', padX, footY);
 
-  drawSeal(ctx, CARD_W - padX - 52, footY - 42, 52);
+  const sealSize = Math.max(36, Math.round(CARD_W * 0.048));
+  drawSeal(ctx, CARD_W - padX - sealSize, footY - sealSize + Math.round(footPx * 0.5), sealSize);
 
   return cv;
 }
@@ -222,10 +254,15 @@ function toBlob(cv) {
 
 /**
  * 下载卡片 PNG。
+ * @param {HTMLCanvasElement} cv
+ * @param {object} poem
+ * @param {HTMLElement} [hostEl]  透传给 composeCard
  * @returns {Promise<string>} 文件名
  */
-export async function downloadCard(cv, poem) {
-  const blob = await toBlob(cv);
+export async function downloadCard(cv, poem, hostEl) {
+  // 若调用方传了 hostEl 而 cv 未生成,这里重新合成以保证尺寸
+  const finalCv = hostEl && !cv ? composeCard(poem, null, hostEl) : cv;
+  const blob = await toBlob(finalCv);
   const url = URL.createObjectURL(blob);
   const name = safeName(poem);
   const a = document.createElement('a');
@@ -280,4 +317,5 @@ export async function shareCard(cv, poem) {
   }
 }
 
-export const CARD_SIZE = { w: CARD_W, h: CARD_H };
+export const CARD_SIZE = { w: 1080, h: 1440 };
+export { IMG_RATIO, DPR_CAP };
