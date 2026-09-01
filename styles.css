@@ -218,6 +218,56 @@ body {
 .pc-swap-img.is-busy { cursor: wait; }
 .pc-swap-img.is-busy svg { animation: pc-spin .7s linear infinite; }
 
+/* v3.1 · 明信片头部(标题 + 收藏 ★) */
+.postcard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.postcard-head .postcard-title { flex: 1; min-width: 0; }
+
+.pc-fav-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(45,42,38,0.18);
+  border-radius: 8px;
+  color: rgba(45,42,38,0.45);
+  cursor: pointer;
+  transition: color .18s, background .18s, border-color .18s, transform .12s;
+  margin-top: 4px;
+}
+.pc-fav-btn:hover {
+  color: #a8321e;
+  border-color: rgba(168,50,30,0.4);
+  transform: translateY(-1px);
+}
+.pc-fav-btn.is-fav {
+  color: #a8321e;          /* 朱砂 */
+  background: rgba(168,50,30,0.08);
+  border-color: rgba(168,50,30,0.35);
+}
+.pc-fav-btn:active { transform: scale(0.94); }
+
+.pc-dark .pc-fav-btn {
+  border-color: rgba(253,252,249,0.22);
+  color: rgba(253,252,249,0.45);
+}
+.pc-dark .pc-fav-btn:hover {
+  color: #e8a89a;
+  border-color: rgba(232,168,154,0.5);
+}
+.pc-dark .pc-fav-btn.is-fav {
+  color: #e8a89a;
+  background: rgba(232,168,154,0.10);
+  border-color: rgba(232,168,154,0.45);
+}
+
 @keyframes pc-img-in {
   from { opacity: 0; transform: scale(1.06); }
   to   { opacity: 1; transform: none; }

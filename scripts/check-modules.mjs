@@ -33,13 +33,15 @@ const projectRoot = require('path').resolve(require('path').dirname(here), '..')
 const base = 'file://' + projectRoot.replace(/\\/g, '/');
 
 await checkImport('store/schema.js',     `${base}/src/store/schema.js`);
-const statsMod   = await checkImport('store/stats.js',    `${base}/src/store/stats.js`);
-const historyMod = await checkImport('store/history.js',  `${base}/src/store/history.js`);
+const statsMod     = await checkImport('store/stats.js',     `${base}/src/store/stats.js`);
+const historyMod   = await checkImport('store/history.js',   `${base}/src/store/history.js`);
+const favoritesMod = await checkImport('store/favorites.js', `${base}/src/store/favorites.js`);
 
 // 关键符号存在性
 const required = [
-  ['stats.createStatsStore',   statsMod?.createStatsStore],
+  ['stats.createStatsStore',     statsMod?.createStatsStore],
   ['history.createHistoryStore', historyMod?.createHistoryStore],
+  ['favorites.createFavoritesStore', favoritesMod?.createFavoritesStore],
 ];
 for (const [label, v] of required) {
   if (typeof v === 'function') { ok.push(label); console.log(`  ✓ ${label}`); }

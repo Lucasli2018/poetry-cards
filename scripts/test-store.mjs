@@ -17,6 +17,10 @@ import {
   normalizePoem, assertPoemShape,
 } from '../src/store/schema.js';
 
+import { createStatsStore } from '../src/store/stats.js';
+import { createHistoryStore } from '../src/store/history.js';
+import { createFavoritesStore } from '../src/store/favorites.js';
+
 let passed = 0;
 let failed = 0;
 const failures = [];
@@ -179,6 +183,178 @@ function throws(fn, ErrorClass, label) {
   // title 数字会被 String() 强转,不会抛
   const coerced = assertPoemShape({ title: 123 });
   eq(coerced.title, '123', 'assertPoemShape: title 数字 → 字符串化');
+}
+
+// ───────────────────────────────────────────────────────────
+// 9. stats store(注入 Map 适配器,绕过 localStorage)
+// ───────────────────────────────────────────────────────────
+{
+  const mem = new Map();
+  const ls = { getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+               setItem: (k, v) => mem.set(k, String(v)) };
+  const stats = createStatsStore(ls);
+
+  // 初始
+  eq(stats.summary(), { totalDraws: 0, todayDraws: 0, todayKey: '' }, 'stats: 初始 summary');
+  eq(stats.topDynasties(3), [], 'stats: 初始 topDynasties 空');
+  eq(stats.topImagery(3), [], 'stats: 初始 topImagery 空');
+
+  // 第 1 次抽
+  const r1 = stats.onDraw({ dynasty: '唐' }, ['moonlight']);
+  eq(r1.totalDraws, 1, 'stats: 第 1 次 totalDraws=1');
+  eq(r1.todayDraws, 1, 'stats: 第 1 次 todayDraws=1');
+  eq(r1.dynastyCounter, { '唐': 1 }, 'stats: 朝代分布累加');
+  eq(r1.imageryCounter, { moonlight: 1 }, 'stats: 意象分布累加');
+
+  // 第 2 次抽
+  stats.onDraw({ dynasty: '唐' }, ['moonlight', 'mountain']);
+  const r2 = stats.summary();
+  eq(r2.totalDraws, 2, 'stats: totalDraws=2');
+
+  // TOP N 按 count 降序
+  eq(stats.topDynasties(2), [{ key: '唐', count: 2 }], 'stats: topDynasties=2');
+  eq(stats.topImagery(3), [
+    { key: 'moonlight', count: 2 },
+    { key: 'mountain',  count: 1 },
+  ], 'stats: topImagery 排序');
+
+  // 缺 dynasty 不抛
+  stats.onDraw({}, []);
+  eq(stats.summary().totalDraws, 3, 'stats: 缺字段也能累加 totalDraws');
+
+  // get 返回深拷贝(改原对象不影响 store)
+  const snap = stats.get();
+  snap.dynastyCounter['唐'] = 999;
+  eq(stats.summary().totalDraws, 3, 'stats: get 深拷贝隔离');
+
+  // reset
+  stats.reset();
+  eq(stats.summary(), { totalDraws: 0, todayDraws: 0, todayKey: '' }, 'stats: reset 后归零');
+}
+
+// ───────────────────────────────────────────────────────────
+// 10. history store
+// ───────────────────────────────────────────────────────────
+{
+  const mem = new Map();
+  const ls = { getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+               setItem: (k, v) => mem.set(k, String(v)) };
+  const history = createHistoryStore(ls);
+
+  // 初始
+  eq(history.list(), [], 'history: 初始空');
+  eq(history.size(), 0, 'history: size=0');
+
+  // push 一首
+  const poem = { id: 1, title: '静夜思', author: { name: '李白' }, dynasty: { name: '唐' }, content: ['a'] };
+  const e1 = history.push(poem);
+  truthy(e1 && e1.title === '静夜思' && e1.drawnAt > 0, 'history: push 返回 entry');
+  eq(history.size(), 1, 'history: size=1');
+  eq(history.list()[0].title, '静夜思', 'history: list 包含条目');
+
+  // push 本地诗结构(content 字符串)
+  const localPoem = { id: 'L2', title: '咏鹅', author: '骆宾王', dynasty: '唐',
+                      content: '鹅鹅鹅\n曲项向天歌', source: 'local' };
+  history.push(localPoem);
+  eq(history.size(), 2, 'history: push 本地诗也累加');
+
+  // 滚动队列:连推 200 条只保留 200
+  for (let i = 0; i < 200; i++) history.push({ id: i, title: 't' + i, content: ['x'] });
+  eq(history.size(), 200, 'history: 容量上限 200');
+
+  // 再 push 一条,弹出最旧
+  history.push({ id: 999, title: 'newest', content: ['x'] });
+  eq(history.size(), 200, 'history: 滚动后仍是 200');
+  eq(history.list()[0].title, 'newest', 'history: 最新在前');
+
+  // clear
+  history.clear();
+  eq(history.list(), [], 'history: clear 后空');
+
+  // null poem 不写
+  eq(history.push(null), null, 'history: push(null) 返回 null');
+  eq(history.push('x'), null, 'history: push 非对象 返回 null');
+}
+
+// ───────────────────────────────────────────────────────────
+// 11. 工厂校验
+// ───────────────────────────────────────────────────────────
+{
+  throws(() => createStatsStore(null), TypeError, 'createStatsStore(null) 抛错');
+  throws(() => createHistoryStore(null), TypeError, 'createHistoryStore(null) 抛错');
+  throws(() => createStatsStore({}), TypeError, 'createStatsStore 缺 getItem 抛错');
+}
+
+// ───────────────────────────────────────────────────────────
+// 12. favorites store
+// ───────────────────────────────────────────────────────────
+{
+  const mem = new Map();
+  const ls = { getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+               setItem: (k, v) => mem.set(k, String(v)) };
+  const fav = createFavoritesStore(ls);
+
+  // 初始
+  eq(fav.list(), [], 'favorites: 初始空');
+  eq(fav.size(), 0, 'favorites: size=0');
+  eq(fav.has(1), false, 'favorites: has(不存在) false');
+
+  // add 一首
+  const p1 = { id: 1, title: '静夜思', author: { name: '李白' }, dynasty: { name: '唐' }, content: ['a'] };
+  const e1 = fav.add(p1);
+  eq(e1.title, '静夜思', 'favorites: add 返回 entry');
+  eq(fav.size(), 1, 'favorites: size=1');
+  eq(fav.has(1), true, 'favorites: has(存在) true');
+
+  // add 已存在 → 置顶 + 更新 favoritedAt
+  const oldTime = e1.favoritedAt;
+  // 等 2ms 保证时间戳不同
+  await new Promise((r) => setTimeout(r, 2));
+  const e1b = fav.add(p1);
+  eq(fav.size(), 1, 'favorites: 重复 add 仍是 1 条');
+  truthy(e1b.favoritedAt >= oldTime, 'favorites: 重复 add 更新 favoritedAt');
+  eq(fav.list()[0].id, 1, 'favorites: 置顶');
+
+  // toggle 未收藏 → 收藏
+  const p2 = { id: 2, title: '咏鹅', author: '骆宾王', dynasty: '唐', content: 'x', source: 'local' };
+  const r1 = fav.toggle(p2);
+  eq(r1.favorited, true, 'favorites: toggle 未收藏 → 收藏');
+  eq(r1.count, 2, 'favorites: toggle 后 count=2');
+  eq(fav.has(2), true, 'favorites: has(2) true');
+
+  // toggle 已收藏 → 取消
+  const r2 = fav.toggle(p2);
+  eq(r2.favorited, false, 'favorites: toggle 已收藏 → 取消');
+  eq(r2.count, 1, 'favorites: toggle 取消后 count=1');
+
+  // remove 不存在 → false
+  eq(fav.remove(999), false, 'favorites: remove 不存在 → false');
+
+  // remove 存在 → true
+  eq(fav.remove(1), true, 'favorites: remove 存在 → true');
+  eq(fav.size(), 0, 'favorites: remove 后 0 条');
+
+  // 容量上限
+  for (let i = 0; i < LIMITS.favorites; i++) {
+    fav.add({ id: i, title: 't' + i, content: ['x'] });
+  }
+  eq(fav.size(), LIMITS.favorites, 'favorites: 容量上限 200');
+  let capErr;
+  try { fav.add({ id: 999, title: 'overflow', content: ['x'] }); }
+  catch (e) { capErr = e; }
+  truthy(capErr?.name === 'CapacityError', 'favorites: 超限抛 CapacityError');
+
+  // toggle 超限不会抛,会返回 error 字段
+  const r3 = fav.toggle({ id: 1000, title: 'x', content: ['x'] });
+  truthy(r3.error && r3.favorited === false, 'favorites: toggle 超限返回 error');
+
+  // clear
+  fav.clear();
+  eq(fav.list(), [], 'favorites: clear 后空');
+
+  // 缺 id
+  throws(() => fav.add({ title: 'x' }), TypeError, 'favorites: add 缺 id 抛 TypeError');
+  eq(fav.toggle({ title: 'x' }).error, '缺少 poem.id', 'favorites: toggle 缺 id 返回 error 字段');
 }
 
 // ───────────────────────────────────────────────────────────

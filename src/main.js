@@ -15,6 +15,7 @@ import { fetchSceneImage, extractThemes } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
 import { createHistoryStore } from './store/history.js';
 import { createStatsStore } from './store/stats.js';
+import { createFavoritesStore } from './store/favorites.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 // ── 本地优先模式（默认开启，即「经典诗词」） ─────────
@@ -78,6 +79,7 @@ let _lastClickAt = 0;
 // v3.1 个性化记忆 store(由 init() 在拿到 ls 后实例化)
 let history = null;
 let stats = null;
+let favorites = null;
 
 // ── 工具 ──────────────────────────────────────────────────
 function escapeHtml(s) {
@@ -199,6 +201,9 @@ function renderPostcard(poem, imgUrl, source) {
   const verse = (poem.content || [])
     .map((l) => `<p>${escapeHtml(l)}</p>`).join('');
 
+  // v3.1 收藏态:渲染时即时反映
+  const isFav = favorites?.has(poem.id) ?? false;
+
   els.stage.innerHTML = `
     <article class="postcard" id="pc-postcard">
       <div class="postcard-media">
@@ -212,7 +217,17 @@ function renderPostcard(poem, imgUrl, source) {
           : `<div class="postcard-media--empty"></div>`}
       </div>
       <div class="postcard-body">
-        <h2 class="postcard-title">${escapeHtml(poem.title)}</h2>
+        <div class="postcard-head">
+          <h2 class="postcard-title">${escapeHtml(poem.title)}</h2>
+          <button class="pc-fav-btn ${isFav ? 'is-fav' : ''}" type="button"
+                  title="${isFav ? '已收藏 · 点击取消' : '收藏这首诗'}"
+                  aria-label="${isFav ? '取消收藏' : '收藏'}"
+                  aria-pressed="${isFav ? 'true' : 'false'}">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+            </svg>
+          </button>
+        </div>
         ${meta ? `<p class="postcard-meta">${meta}</p>` : ''}
         <div class="postcard-rule"></div>
         <div class="postcard-verse">${verse}</div>
@@ -409,6 +424,24 @@ async function onShare() {
   }
 }
 
+// ── 收藏切换 ──────────────────────────────────────────────
+function toggleFavorite() {
+  if (!curPoem || !favorites) return;
+  const r = favorites.toggle(curPoem);
+  if (r.error) {
+    toast(r.error + ' · 请在收藏夹清理旧诗');
+    return;
+  }
+  // 同步按钮态(就地更新,不动整张卡片避免重播入场动画)
+  const btn = els.stage.querySelector('.pc-fav-btn');
+  if (btn) {
+    btn.classList.toggle('is-fav', r.favorited);
+    btn.setAttribute('aria-pressed', r.favorited ? 'true' : 'false');
+    btn.title = r.favorited ? '已收藏 · 点击取消' : '收藏这首诗';
+  }
+  toast(r.favorited ? `已收藏《${curPoem.title || '无题'}》` : '已取消收藏');
+}
+
 // ── 主题 ──────────────────────────────────────────────────
 const THEME_ORDER = ['auto', 'light', 'dark'];
 function applyTheme(mode) {
@@ -459,7 +492,9 @@ async function init() {
   // 明信片配图上的「换图」按钮（事件委托：renderPostcard 会重建 DOM）
   els.stage.addEventListener('click', (e) => {
     const sw = e.target.closest('.pc-swap-img');
-    if (sw) { e.preventDefault(); swapImage(); }
+    if (sw) { e.preventDefault(); swapImage(); return; }
+    const fb = e.target.closest('.pc-fav-btn');
+    if (fb) { e.preventDefault(); toggleFavorite(); }
   });
   document.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' || e.repeat) return;
@@ -471,9 +506,10 @@ async function init() {
 
   setBusyUI(false);
 
-  // v3.1 个性化记忆:实例化 history / stats store(注入 ls 适配器)
+  // v3.1 个性化记忆:实例化 history / stats / favorites store(注入 ls 适配器)
   history = createHistoryStore(ls);
   stats = createStatsStore(ls);
+  favorites = createFavoritesStore(ls);
 
   // 预载本地兜底库（首屏前就绪，保证「本地优先」立即可用）
   await loadLocalPoems();
