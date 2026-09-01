@@ -24,7 +24,25 @@ export function createStatsStore(storage) {
   }
 
   function load() {
-    return parseSafe(storage.getItem(KEY.statsMeta), DEFAULTS.statsMeta);
+    const raw = parseSafe(storage.getItem(KEY.statsMeta), DEFAULTS.statsMeta);
+    // 兜底:老 schema 残留或脏数据 → 字段类型修正(不丢整个对象)
+    if (typeof raw.totalDraws !== 'number') raw.totalDraws = 0;
+    if (typeof raw.todayDraws !== 'number') raw.todayDraws = 0;
+    if (typeof raw.todayKey !== 'string')   raw.todayKey   = '';
+    if (!raw.dynastyCounter || typeof raw.dynastyCounter !== 'object') raw.dynastyCounter = {};
+    if (!raw.imageryCounter || typeof raw.imageryCounter !== 'object') raw.imageryCounter = {};
+    // 脏 key 清洗:"[object Object]"(老 schema 把 {id,name} 整体 String 化)
+    for (const k of Object.keys(raw.dynastyCounter)) {
+      if (typeof raw.dynastyCounter[k] !== 'number' || k === '[object Object]' || !k.trim()) {
+        delete raw.dynastyCounter[k];
+      }
+    }
+    for (const k of Object.keys(raw.imageryCounter)) {
+      if (typeof raw.imageryCounter[k] !== 'number' || k === '[object Object]' || !k.trim()) {
+        delete raw.imageryCounter[k];
+      }
+    }
+    return raw;
   }
 
   function save(meta) {

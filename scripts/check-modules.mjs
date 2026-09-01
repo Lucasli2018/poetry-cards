@@ -39,6 +39,7 @@ const favoritesMod = await checkImport('store/favorites.js', `${base}/src/store/
 const panelMod     = await checkImport('ui/memory-panel.js', `${base}/src/ui/memory-panel.js`);
 const renderersMod = await checkImport('ui/renderers.js',    `${base}/src/ui/renderers.js`);
 const storageMod   = await checkImport('ui/storage-dialog.js', `${base}/src/ui/storage-dialog.js`);
+const dom2cvMod    = await checkImport('ui/dom-to-canvas.js', `${base}/src/ui/dom-to-canvas.js`);
 
 // 关键符号存在性
 const required = [
@@ -52,6 +53,7 @@ const required = [
   ['storage.snapshotForExport',  storageMod?.snapshotForExport],
   ['storage.parseSnapshot',      storageMod?.parseSnapshot],
   ['storage.mergeImport',        storageMod?.mergeImport],
+  ['dom2cv.domToCanvas',         dom2cvMod?.domToCanvas],
 ];
 for (const [label, v] of required) {
   if (typeof v === 'function') { ok.push(label); console.log(`  ✓ ${label}`); }

@@ -13,6 +13,7 @@
 import { apiRequest, resetBreaker } from './net/api.js';
 import { fetchSceneImage, extractThemes } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
+import { domToCanvas } from './ui/dom-to-canvas.js';
 import { createHistoryStore } from './store/history.js';
 import { createStatsStore } from './store/stats.js';
 import { createFavoritesStore } from './store/favorites.js';
@@ -414,7 +415,7 @@ async function drawNew() {
 }
 
 // ── 导出 / 分享 ───────────────────────────────────────────
-// hostEl 严格 = 当前 DOM 明信片节点,canvas 尺寸按其实际宽高 + dpr 锐化
+// hostEl 严格 = 当前 DOM 明信片节点,canvas = DOM 截图(1:1 原样输出)
 function getPostcardHost() {
   return document.getElementById('pc-postcard');
 }
@@ -424,8 +425,9 @@ async function onDownload() {
   try {
     toast('正在合成卡片…');
     const host = getPostcardHost();
-    const cv = composeCard(curPoem, curImg, host);
-    const name = await downloadCard(cv, curPoem, host);
+    // ★ v3.2.2 改为 DOM 1:1 截图,确保下载 = 看到的样子
+    const cv = await domToCanvas(host, 2);
+    const name = await downloadCard(cv, curPoem);
     toast(`已下载 ${name}`);
   } catch (e) {
     console.error(e);
@@ -437,7 +439,7 @@ async function onShare() {
   if (!curPoem) return;
   try {
     const host = getPostcardHost();
-    const cv = composeCard(curPoem, curImg, host);
+    const cv = await domToCanvas(host, 2);
     const r = await shareCard(cv, curPoem);
     if (r === 'shared') toast('已分享');
     else if (r === 'copied') toast('已复制诗词文案到剪贴板');

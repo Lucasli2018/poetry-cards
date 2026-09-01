@@ -141,8 +141,16 @@ export function renderStats(snapshot, actions = {}) {
   const m = snapshot?.stats || snapshot || {};
   const total = m.totalDraws || 0;
   const today = m.todayDraws || 0;
-  const dynasties = m.topDynasties || [];
-  const imagery   = m.topImagery   || [];
+  // 兜底:把缺失 / "[object Object]" / 非字符串 的 key 替换成「佚名」占位符
+  const PLACEHOLDER = '佚名';
+  const clean = (arr) => (arr || [])
+    .map((x) => ({
+      key:   (typeof x.key === 'string' && x.key.trim() && x.key !== '[object Object]') ? x.key : PLACEHOLDER,
+      count: Number(x.count) || 0,
+    }))
+    .filter((x) => x.count > 0);
+  const dynasties = clean(m.topDynasties);
+  const imagery   = clean(m.topImagery);
 
   const wrap = el('div', 'pc-stats');
 

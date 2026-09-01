@@ -159,8 +159,6 @@ function flickrTags(poem) {
 }
 
 // ── 图片加载（带 CORS + 超时） ───────────────────────────
-const IMG_TIMEOUT_MS = 8000;
-const AI_TIMEOUT_MS = 6000;   // AI 生成慢，单独给 6s；超时就换 Flickr
 
 // 显示图尺寸：540×180（3:1 横条,与展示卡片图区 1/3 高度一致）
 //   - 宽 540 适合手机宽度(360~414px)显示且 2x 锐化足够
@@ -169,6 +167,11 @@ const AI_TIMEOUT_MS = 6000;   // AI 生成慢，单独给 6s；超时就换 Flic
 // 单次请求只取这一档；导出 Canvas 在 cards.js 里按 DOM 实际尺寸 + dpr 锐化。
 export const SCENE_IMG_W = 540;
 export const SCENE_IMG_H = 180;
+
+// 图片加载:总超时缩短到 4s(原 8s),失败快速降级到 LoremFlickr / Picsum / 渐变
+//   减少「点击换一张 → 长时间等待」的体感
+const IMG_TIMEOUT_MS = 4000;
+const AI_TIMEOUT_MS = 3500;   // Pollinations AI 慢,单独给 3.5s
 
 /**
  * 加载一张可用于 Canvas 导出的图片。

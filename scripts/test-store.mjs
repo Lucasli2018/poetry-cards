@@ -362,6 +362,40 @@ function throws(fn, ErrorClass, label) {
 }
 
 // ───────────────────────────────────────────────────────────
+// 13. stats 脏数据清洗(v3.2.2)
+// ───────────────────────────────────────────────────────────
+{
+  const mem = new Map();
+  const ls = { getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+               setItem: (k, v) => mem.set(k, String(v)) };
+
+  // 注入「老 schema 残留 + [object Object] 脏 key + 类型错误字段」
+  ls.setItem('pc_v3_stats_meta', JSON.stringify({
+    version: 1,
+    totalDraws: 'not a number',
+    todayDraws: 3,
+    todayKey: 12345,
+    dynastyCounter: { '唐': 2, '[object Object]': 5, '': 1 },
+    imageryCounter: { 'moonlight': 3, '[object Object]': 2 },
+  }));
+  const stats = createStatsStore(ls);
+  const s = stats.get();
+  eq(typeof s.totalDraws, 'number', 'stats: 脏数据下 totalDraws 仍为 number');
+  eq(s.totalDraws, 0, 'stats: 脏字符串 → 0');
+  eq(s.todayKey, '', 'stats: 脏数字 todayKey → ""');
+  eq(s.dynastyCounter, { '唐': 2 }, 'stats: 清洗掉 [object Object] 与空 key');
+  eq(s.imageryCounter, { 'moonlight': 3 }, 'stats: imagery 也清洗');
+
+  // 完整缺字段
+  mem.clear();
+  ls.setItem('pc_v3_stats_meta', JSON.stringify({ version: 1 }));
+  const stats2 = createStatsStore(ls);
+  const s2 = stats2.get();
+  eq(s2.dynastyCounter, {}, 'stats: 缺字段 → 空 counter');
+  eq(s2.totalDraws, 0, 'stats: 缺字段 → 0');
+}
+
+// ───────────────────────────────────────────────────────────
 // 汇总
 // ───────────────────────────────────────────────────────────
 const total = passed + failed;
