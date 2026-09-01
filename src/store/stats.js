@@ -9,7 +9,7 @@
 // =============================================================
 
 import {
-  KEY, DEFAULTS, parseSafe, dump, rolloverIfNeeded,
+  KEY, DEFAULTS, parseSafe, dump, rolloverIfNeeded, normalizePoem,
 } from './schema.js';
 
 /**
@@ -62,7 +62,8 @@ export function createStatsStore(storage) {
 
     /**
      * 记录一次成功抽卡(主流程唯一入口)。
-     * @param {{dynasty?:string}} poem
+     * 内部 normalizePoem 把 {id,name} → name 字符串,避免 [object Object] 写入 counter。
+     * @param {object} poem
      * @param {string[]} themes  images.js#extractThemes 的输出(top 2 主题词)
      * @returns {object} 更新后的快照
      */
@@ -71,9 +72,11 @@ export function createStatsStore(storage) {
       rolloverIfNeeded(meta);                          // 跨日自动归零
       meta.totalDraws += 1;
       meta.todayDraws += 1;
-      if (poem && poem.dynasty) {
-        meta.dynastyCounter[poem.dynasty] =
-          (meta.dynastyCounter[poem.dynasty] || 0) + 1;
+      // ★ 关键修复:在写入前确保 dynasty 是字符串(本地诗是 {id,name} 对象)
+      const norm = normalizePoem(poem) || {};
+      if (norm.dynasty) {
+        meta.dynastyCounter[norm.dynasty] =
+          (meta.dynastyCounter[norm.dynasty] || 0) + 1;
       }
       for (const t of themes) {
         if (!t) continue;

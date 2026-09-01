@@ -17,6 +17,8 @@ import {
   normalizePoem, assertPoemShape,
 } from '../src/store/schema.js';
 
+const DEFAULTS_FROM_SCHEMA = DEFAULTS.statsMeta();
+
 import { createStatsStore } from '../src/store/stats.js';
 import { createHistoryStore } from '../src/store/history.js';
 import { createFavoritesStore } from '../src/store/favorites.js';
@@ -362,7 +364,7 @@ function throws(fn, ErrorClass, label) {
 }
 
 // ───────────────────────────────────────────────────────────
-// 13. stats 脏数据清洗(v3.2.2)
+// 13. stats 脏数据清洗(v3.2.2 + v3.2.4)
 // ───────────────────────────────────────────────────────────
 {
   const mem = new Map();
@@ -393,6 +395,35 @@ function throws(fn, ErrorClass, label) {
   const s2 = stats2.get();
   eq(s2.dynastyCounter, {}, 'stats: 缺字段 → 空 counter');
   eq(s2.totalDraws, 0, 'stats: 缺字段 → 0');
+
+  // v3.2.4 关键修复:onDraw 写入前必须 normalizePoem,否则本地诗
+  //   dynasty={id,name} 会写入 '[object Object]' 污染 counter
+  mem.clear();
+  ls.setItem('pc_v3_stats_meta', JSON.stringify(DEFAULTS_FROM_SCHEMA));
+  const stats3 = createStatsStore(ls);
+  // 本地诗结构(嵌套 dynasty 对象)
+  stats3.onDraw({
+    id: 900001, title: '登鹳雀楼',
+    author: { name: '王之涣' },
+    dynasty: { id: 6, name: '唐' },
+    type: { name: '五言绝句' },
+    content: ['a'],
+  }, []);
+  // 诗泉结构(嵌套 dynasty 对象)
+  stats3.onDraw({
+    id: 12345, title: '静夜思',
+    author: { name: '李白' },
+    dynasty: { name: '宋' },
+    type: { name: '五言绝句' },
+    content: ['a'],
+  }, []);
+  // 字符串 dynasty
+  stats3.onDraw({ id: 999, title: '测试', dynasty: '元', content: ['a'] }, []);
+
+  const s3 = stats3.get();
+  eq(s3.dynastyCounter, { '唐': 1, '宋': 1, '元': 1 },
+    'stats: onDraw 写入前 normalize,三种结构都正确写入字符串 key');
+  eq(s3.totalDraws, 3, 'stats: 3 次 onDraw,totalDraws=3');
 }
 
 // ───────────────────────────────────────────────────────────

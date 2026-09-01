@@ -178,13 +178,17 @@ const POEM_SOURCE_LABEL = {
 function applyLocalFirst(on) {
   if (!els.localFirstSwitch) return;
   els.localFirstSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
+  const current = on ? POEM_SOURCE_LABEL.classic : POEM_SOURCE_LABEL.random;
   els.localFirstSwitch.setAttribute(
     'aria-label',
-    `诗源切换：当前${on ? POEM_SOURCE_LABEL.classic : POEM_SOURCE_LABEL.random}，点击切换`
+    `诗源切换：当前${current}，点击切换`
   );
   els.localFirstSwitch.title = on
     ? `当前：${POEM_SOURCE_LABEL.classic} · 点击切换至${POEM_SOURCE_LABEL.random}`
     : `当前：${POEM_SOURCE_LABEL.random} · 点击切换至${POEM_SOURCE_LABEL.classic}`;
+  // 当前态文字标签(单元素,内容随 aria-checked 切换)
+  const labelEl = els.localFirstSwitch.querySelector('.pc-switch-label--current');
+  if (labelEl) labelEl.textContent = current;
 }
 function toggleLocalFirst() {
   localFirst = !localFirst;

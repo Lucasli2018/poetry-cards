@@ -155,11 +155,9 @@ body {
 .pc-degraded-btn:hover { background: var(--accent-soft); }
 
 /* ── 明信片 ───────────────────────────────────────────── */
-.pc-stage { min-height: 420px; }
+.pc-stage { min-height: 380px; }    /* v3.2.4:卡片图区 300 + body 最小高度 ≈ 380 */
 
 .postcard {
-  display: flex;            /* 让 .postcard-media (1/3) 与 .postcard-body (2/3) 自动均分高度 */
-  flex-direction: column;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
@@ -168,23 +166,19 @@ body {
   opacity: 0;
   transform: translateY(14px);
   transition: opacity .55s cubic-bezier(.22,.61,.36,1), transform .55s cubic-bezier(.22,.61,.36,1);
-  /* 卡片基准高度(图 1/3 ≈ 170px + 诗 2/3 ≈ 340px ≈ 510px),flex 比才有意义 */
-  min-height: 480px;
+  /* v3.2.4:图区固定 300px,body 自适应诗文字,卡片总高 = 300 + body 内容高 */
 }
 .postcard.is-in { opacity: 1; transform: none; }
 
-/* 配图区(占卡片 1/3 高度,诗占主导 2/3)
-   - .postcard 是 flex column, .postcard-media 固定 flex:1, .postcard-body flex:2
-   - 这样无论卡片多高,图始终是 1/3,诗始终是 2/3 — 稳 */
+/* 配图区(v3.2.4 固定 300px 高度,诗主导)
+   - 固定高更稳:换诗时图区不会跳来跳去
+   - 与展示图片请求尺寸 (540×180=300×100 比例保持)联动
+*/
 .postcard-media {
   position: relative;
-  flex: 1 1 33.333%;      /* 占卡片高度 1/3;基线确保小图下不被 0 撑掉 */
-  min-height: 0;
+  height: 300px;           /* v3.2.4 固定高度,避免换诗时视觉抖动 */
   background: linear-gradient(135deg, #e8e4d9 0%, #d5cfc0 50%, #c2bba9 100%);
   overflow: hidden;
-}
-.pc-dark .postcard-media {
-  background: linear-gradient(135deg, #2e2b27 0%, #3a3630 50%, #464139 100%);
 }
 .pc-dark .postcard-media {
   background: linear-gradient(135deg, #2e2b27 0%, #3a3630 50%, #464139 100%);
@@ -295,8 +289,6 @@ body {
 
 /* 文字区 */
 .postcard-body {
-  flex: 2 1 66.666%;       /* 占卡片高度 2/3 */
-  min-height: 0;
   padding: 22px 28px 18px;
   text-align: center;
   display: flex;
@@ -434,17 +426,17 @@ body {
 }
 
 /* ── 典雅 switch · 诗源切换 ─────────────────────────────
-   结构:.pc-switch > .pc-switch-label{off|on} + .pc-switch-track > .pc-switch-thumb
-   状态:.pc-switch[aria-checked="true"]  → 经典档(默认)
-        .pc-switch[aria-checked="false"] → 随机档
-   视觉:无边框胶囊轨道 + 圆形滑块 + 两侧文字标签
+   结构:.pc-switch > .pc-switch-label--current + .pc-switch-track > .pc-switch-thumb
+   状态:.pc-switch[aria-checked="true"]  → 经典档(默认,显示「典藏诗库」)
+        .pc-switch[aria-checked="false"] → 随机档(显示「随机一遇」)
+   视觉:紧凑胶囊 + 当前态文字标签(单侧) + 圆形滑块;切换时文字自动替换
 */
 .pc-switch {
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
+  padding: 5px 10px 5px 8px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -462,22 +454,16 @@ body {
 }
 .pc-switch:active { transform: translateY(1px); }
 
-.pc-switch-label {
+/* 当前态文字标签:始终 1 个,根据 aria-checked 自动替换内容 */
+.pc-switch-label--current {
   font-family: var(--font-serif);
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: .12em;
-  color: var(--sub);
-  transition: color .25s ease, opacity .25s ease;
-  white-space: nowrap;
-}
-/* 当前激活态用墨黑 + 朱砂微点缀;非激活态灰 */
-.pc-switch-label--on  { color: var(--ink); font-weight: 600; }
-.pc-switch[aria-checked="false"] .pc-switch-label--off,
-.pc-switch[aria-checked="false"] .pc-switch-label--on  { color: var(--sub); opacity: .55; }
-.pc-switch[aria-checked="true"]  .pc-switch-label--off { opacity: .45; }
-.pc-switch[aria-checked="true"]  .pc-switch-label--on  {
   color: var(--ink);
+  white-space: nowrap;
+  /* 文字切换时轻微淡入 */
+  transition: opacity .25s ease;
 }
 
 /* 轨道 */
