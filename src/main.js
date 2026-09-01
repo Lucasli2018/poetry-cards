@@ -151,6 +151,11 @@ function renderPostcard(poem, imgUrl, source) {
   els.stage.innerHTML = `
     <article class="postcard" id="pc-postcard">
       <div class="postcard-media">
+        <button class="pc-swap-img" type="button" title="换一张配图（保留诗词）" aria-label="换一张配图">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+          </svg>
+        </button>
         ${imgUrl
           ? `<img src="${escapeHtml(imgUrl)}" alt="诗意配图" crossorigin="anonymous" referrerpolicy="no-referrer">`
           : `<div class="postcard-media--empty"></div>`}
@@ -180,6 +185,67 @@ function renderPostcard(poem, imgUrl, source) {
 
 function showError(msg) {
   els.stage.innerHTML = `<p class="pc-empty">${escapeHtml(msg)}</p>`;
+}
+
+// ── 只换图（保留诗词） ───────────────────────────────────
+// 仅替换配图区 DOM，不动诗文，避免整卡重播入场动画。
+function updateImageOnly(url, source) {
+  const media = els.stage.querySelector('.postcard-media');
+  if (!media) { renderPostcard(curPoem, url, source); return; }
+  const old = media.querySelector('img');
+  if (old) old.remove();
+  const empty = media.querySelector('.postcard-media--empty');
+  if (empty) empty.remove();
+  if (url) {
+    const ni = document.createElement('img');
+    ni.alt = '诗意配图';
+    ni.crossOrigin = 'anonymous';
+    ni.referrerPolicy = 'no-referrer';
+    ni.src = url;
+    media.appendChild(ni);
+  } else {
+    const d = document.createElement('div');
+    d.className = 'postcard-media--empty';
+    media.appendChild(d);
+  }
+  if (els.srcNote) {
+    els.srcNote.textContent = source === 'none'
+      ? '配图暂不可用（已用水墨底纹）'
+      : `配图 · ${source}`;
+  }
+}
+
+// 单独换图：复用当前诗词，换新 seed 重新取配图；遵守请求纪律（_busy / _seq）。
+async function swapImage() {
+  if (!curPoem || _busy) return;
+  const seq = ++_seq;
+  if (_abort) _abort.abort();
+  _abort = new AbortController();
+  _busy = true;
+  const btn = els.stage.querySelector('.pc-swap-img');
+  btn?.classList.add('is-busy');
+  try {
+    // 新随机 seed → 不同的图（与首图 seed 区分开，避免拿到同一张）
+    const { img, url, source } = await fetchSceneImage(
+      curPoem, { seed: Date.now() + Math.floor(Math.random() * 1e6) }
+    );
+    if (seq !== _seq) return;   // 期间又触发了换诗/换图，丢弃本次
+    curImg = img;
+    curImgUrl = url;
+    curSource = source;
+    updateImageOnly(url, source);
+    if (source === 'none') toast('配图暂不可用，再试一次吧');
+    else toast('已换一张配图');
+  } catch (e) {
+    if (e && (e.name === 'AbortError' || e.code === 20)) return;
+    console.error(e);
+    toast('换图失败，请稍后重试');
+  } finally {
+    if (seq === _seq) {
+      _busy = false;
+      els.stage.querySelector('.pc-swap-img')?.classList.remove('is-busy');
+    }
+  }
 }
 
 // ── 核心：换一张（1 次 random + 1 次图片） ─────────────────
@@ -313,6 +379,12 @@ async function init() {
   els.dlBtn.addEventListener('click', onDownload);
   els.shareBtn.addEventListener('click', onShare);
   els.recoverBtn?.addEventListener('click', attemptRecover);
+
+  // 明信片配图上的「换图」按钮（事件委托：renderPostcard 会重建 DOM）
+  els.stage.addEventListener('click', (e) => {
+    const sw = e.target.closest('.pc-swap-img');
+    if (sw) { e.preventDefault(); swapImage(); }
+  });
   document.addEventListener('keydown', (e) => {
     if (e.code !== 'Space' || e.repeat) return;
     const tag = e.target?.tagName;

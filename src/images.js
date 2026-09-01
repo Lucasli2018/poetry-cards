@@ -119,8 +119,10 @@ function loadImage(url, timeout = IMG_TIMEOUT_MS) {
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  const w = opts.width || 1200;
-  const h = opts.height || 1600;
+  // 尺寸减半（600×800）：网页明信片约 480×320 显示，减半后下载字节约降 1/4，加载更快；
+  // 导出时由 Canvas 自适应铺满，文字仍用 1200×1600 高清合成。
+  const w = opts.width || 600;
+  const h = opts.height || 800;
   const seed = opts.seed ?? Date.now();
   const tags = keywordsFor(poem);
 
@@ -145,8 +147,8 @@ export async function fetchSceneImage(poem, opts = {}) {
  * 导出时才走 fetchSceneImage 拿 CORS 版。
  */
 export function sceneImageUrl(poem, opts = {}) {
-  const w = opts.width || 1200;
-  const h = opts.height || 1600;
+  const w = opts.width || 600;
+  const h = opts.height || 800;
   const seed = opts.seed ?? Date.now();
   const tags = keywordsFor(poem);
   return `https://loremflickr.com/${w}/${h}/${encodeURIComponent(tags.join(','))}?lock=${seed}`;

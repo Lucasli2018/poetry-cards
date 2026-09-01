@@ -188,6 +188,36 @@ body {
 }
 .postcard-media--empty { width: 100%; height: 100%; }
 
+/* 配图右上角「换图」悬浮按钮 */
+.pc-swap-img {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: #fff;
+  background: rgba(45, 42, 38, .42);
+  border: 1px solid rgba(255, 255, 255, .5);
+  border-radius: 50%;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .18);
+  transition: background-color .2s, transform .2s;
+}
+.pc-swap-img:hover {
+  background: rgba(45, 42, 38, .62);
+  transform: translateY(-1px);
+}
+.pc-swap-img svg { width: 18px; height: 18px; display: block; }
+.pc-swap-img.is-busy { cursor: wait; }
+.pc-swap-img.is-busy svg { animation: pc-spin .7s linear infinite; }
+
 @keyframes pc-img-in {
   from { opacity: 0; transform: scale(1.06); }
   to   { opacity: 1; transform: none; }
