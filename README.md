@@ -67,25 +67,38 @@
 ```
 poetry-cards/
 ├── index.html              单页入口（<script type="module">）
-├── styles.css              文艺清新主题（亮/暗双套 CSS 变量）
+├── styles.css              文艺清新主题（亮/暗双套 CSS 变量 + v3.1 记忆面板样式）
 ├── manifest.webmanifest    PWA 清单
 ├── sw.js                   Service Worker（网络优先 + 离线回退）
 ├── assets/
 │   └── icons/              favicon.svg/.ico/-32.png · apple-touch-icon.png · icon-192/512.png
 ├── scripts/
 │   ├── serve.py            零依赖本地静态服务器（修正 .js/.webmanifest MIME，跨平台可用）
-│   └── make_favicon.py     纯标准库生成图标（struct+zlib 手写 PNG/ICO，输出至 assets/icons）
+│   ├── make_favicon.py     纯标准库生成图标（struct+zlib 手写 PNG/ICO，输出至 assets/icons）
+│   ├── test-store.mjs      store 单测（90 用例，纯 node 无依赖）
+│   ├── test-storage-dialog.mjs  导入/导出 单测（27 用例）
+│   └── check-modules.mjs   ESM 模块链路冒烟
 ├── docs/
-│   └── PLAN-archive.md     v2.x 规划归档
+│   ├── PLAN-archive.md     v2.x 规划归档
+│   └── PLAN-v3.1.md        v3.1 个性化记忆规划
 └── src/
-    ├── main.js             主流程：一图一诗 · 请求纪律 · 事件
-    ├── images.js           意象提取 + 图片多源守护
+    ├── main.js             主流程：一图一诗 · 请求纪律 · v3.1 记忆入口
+    ├── images.js           意象提取 + 图片多源守护（extractThemes 已 export）
     ├── cards.js            Canvas 合成明信片 + 下载 + 分享
     ├── poems.local.json    本地兜底诗词库（70 首）
-    └── net/                网络层（统一请求 + 限流 + 熔断）
-        ├── api.js          统一请求层：令牌桶→退避(全抖动)→熔断→失败分类
-        ├── rate-limit.js   令牌桶（含空桶死锁修复）
-        └── circuit-breaker.js  熔断器
+    ├── net/                网络层（统一请求 + 限流 + 熔断）
+    │   ├── api.js          统一请求层：令牌桶→退避(全抖动)→熔断→失败分类
+    │   ├── rate-limit.js   令牌桶（含空桶死锁修复）
+    │   └── circuit-breaker.js  熔断器
+    ├── store/              v3.1 个性化记忆
+    │   ├── schema.js       schema 常量 + 容错解析 + 容量守卫
+    │   ├── favorites.js    收藏 store(按 poem.id 去重,200 上限)
+    │   ├── history.js      抽卡历史(滚动队列,200 上限)
+    │   └── stats.js        累计 / 今日 / 朝代 / 意象统计
+    └── ui/                 v3.1 UI
+        ├── memory-panel.js 共享 modal(三个 tab + ESC/外部关闭)
+        ├── renderers.js    三个 tab 的渲染器(纯函数,易测)
+        └── storage-dialog.js 导出/导入 JSON(合并去重)
 ```
 
 ## 数据流
@@ -157,15 +170,17 @@ python scripts/serve.py 8080
 
 ## 更新日志
 
-### v3.1.0 (规划中) — 个性化记忆
+### v3.1.0 (2026-09-01) — 个性化记忆
 
 详细规划见 [`docs/PLAN-v3.1.md`](./docs/PLAN-v3.1.md)。
 
-- ⭐ **收藏夹**:明信片右上角 ★ 收藏,可回顾可取消;容量上限 200 首
-- 📜 **抽卡历史**:自动记录最近 200 首,时间线视图 + 一键清空
-- 📊 **小统计**:累计 / 今日 / 最爱朝代 TOP3 / 最爱意象 TOP3
-- 💾 **导出 / 导入 JSON**:换设备一键迁移,本地优先不依赖任何账号
-- 🗄️ **存储**:全部 localStorage,延续「打开即用、零依赖」架构
+- ⭐ **收藏夹**:明信片右上角 ★ 收藏;容量上限 200 首;按 `poem.id` 去重,新收藏置顶
+- 📜 **抽卡历史**:自动记录最近 200 首,时间线视图(刚刚 / N 分钟前 / N 天前),一键清空
+- 📊 **小统计**:累计 / 今日 / 最爱朝代 TOP5 / 最爱意象 TOP5(横向进度条 + 中文标签)
+- 💾 **导出 / 导入 JSON**:打包为 `*.pcb.json` 备份;导入按 `poem.id` 合并去重(较新时间戳胜),统计覆盖
+- 🗄️ **存储**:全部 localStorage,延续「打开即用、零依赖」架构;严格 200 上限防撑爆
+- 🪟 **共享 modal**:三个 tab 共用一个抽屉,ESC / 点击外部关闭,暗色模式全适配
+- ✅ **测试**:90 + 27 = 117 个单测全绿,ESM 模块链路冒烟通过
 
 ### v3.0.1 (2026-09-01) — 经典诗词默认开启 · 界面瘦身 · 图片压缩
 
