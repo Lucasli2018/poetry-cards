@@ -38,6 +38,7 @@ const historyMod   = await checkImport('store/history.js',   `${base}/src/store/
 const favoritesMod = await checkImport('store/favorites.js', `${base}/src/store/favorites.js`);
 const panelMod     = await checkImport('ui/memory-panel.js', `${base}/src/ui/memory-panel.js`);
 const renderersMod = await checkImport('ui/renderers.js',    `${base}/src/ui/renderers.js`);
+const storageMod   = await checkImport('ui/storage-dialog.js', `${base}/src/ui/storage-dialog.js`);
 
 // 关键符号存在性
 const required = [
@@ -48,6 +49,9 @@ const required = [
   ['renderers.renderFavorites',  renderersMod?.renderFavorites],
   ['renderers.renderHistory',    renderersMod?.renderHistory],
   ['renderers.renderStats',      renderersMod?.renderStats],
+  ['storage.snapshotForExport',  storageMod?.snapshotForExport],
+  ['storage.parseSnapshot',      storageMod?.parseSnapshot],
+  ['storage.mergeImport',        storageMod?.mergeImport],
 ];
 for (const [label, v] of required) {
   if (typeof v === 'function') { ok.push(label); console.log(`  ✓ ${label}`); }

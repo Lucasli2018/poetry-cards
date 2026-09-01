@@ -205,15 +205,32 @@ export function renderStats(snapshot, actions = {}) {
   }
   wrap.appendChild(iSec);
 
-  // 重置按钮
-  if (actions.onReset) {
+  // 重置 + 数据迁移按钮
+  if (actions.onReset || actions.onExport || actions.onImport) {
     const bar = el('div', 'pc-stats-bar');
-    const btn = el('button', 'pc-stats-reset', '重置统计');
-    btn.type = 'button';
-    btn.addEventListener('click', () => {
-      if (confirm('确定清零全部统计?收藏与历史不受影响')) actions.onReset();
-    });
-    bar.appendChild(btn);
+    if (actions.onExport) {
+      const b = el('button', 'pc-stats-export', '导出备份');
+      b.type = 'button';
+      b.title = '将收藏、历史、统计打包为 JSON 文件';
+      b.addEventListener('click', () => actions.onExport());
+      bar.appendChild(b);
+    }
+    if (actions.onImport) {
+      const b = el('button', 'pc-stats-import', '导入备份');
+      b.type = 'button';
+      b.title = '从 JSON 文件恢复(合并写入,不覆盖)';
+      b.addEventListener('click', () => actions.onImport());
+      bar.appendChild(b);
+    }
+    if (actions.onReset) {
+      const b = el('button', 'pc-stats-reset', '重置统计');
+      b.type = 'button';
+      b.title = '清零累计与今日计数;收藏与历史不受影响';
+      b.addEventListener('click', () => {
+        if (confirm('确定清零全部统计?收藏与历史不受影响')) actions.onReset();
+      });
+      bar.appendChild(b);
+    }
     wrap.appendChild(bar);
   }
   return wrap;

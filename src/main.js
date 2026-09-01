@@ -18,6 +18,10 @@ import { createStatsStore } from './store/stats.js';
 import { createFavoritesStore } from './store/favorites.js';
 import { createMemoryPanel } from './ui/memory-panel.js';
 import { renderFavorites, renderHistory, renderStats } from './ui/renderers.js';
+import {
+  snapshotForExport, downloadSnapshot, parseSnapshot,
+  mergeImport, readFileAsText,
+} from './ui/storage-dialog.js';
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 // ── 本地优先模式（默认开启，即「经典诗词」） ─────────
@@ -446,6 +450,52 @@ function toggleFavorite() {
   toast(r.favorited ? `已收藏《${curPoem.title || '无题'}》` : '已取消收藏');
 }
 
+// ── 数据迁移(导出 / 导入) ────────────────────────────────
+function onExportBackup() {
+  try {
+    const snap = snapshotForExport(ls);
+    downloadSnapshot(snap);
+    toast(`已导出备份(${snap.favorites.items.length} 收藏 · ${snap.history.items.length} 历史)`);
+  } catch (e) {
+    console.error(e);
+    toast('导出失败,请稍后重试');
+  }
+}
+
+async function onImportBackup() {
+  // 用隐藏的 <input type=file> 触发文件选择
+  let input = document.getElementById('pc-import-file');
+  if (!input) {
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'pc-import-file';
+    input.accept = '.json,application/json';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+  }
+  input.value = '';   // 允许重选同一文件
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    input.onchange = null;
+    if (!file) return;
+    try {
+      const text = await readFileAsText(file);
+      const snap = parseSnapshot(text);
+      const statsCount = snap.statsMeta?.totalDraws ?? 0;
+      if (!confirm(`即将合并导入:\n· 收藏 ${snap.favorites.items.length} 首\n· 历史 ${snap.history.items.length} 条\n· 统计 ${statsCount} 次累计\n\n同 ID 收藏/历史按时间戳去重,统计会覆盖。\n\n继续?`)) {
+        return;
+      }
+      const r = mergeImport(ls, snap);
+      // 内存中的 store 缓存需要下次读取时刷新 — reload 是最简单稳妥的做法
+      toast(`导入完成 · 新增收藏 ${r.addedFav} · 新增历史 ${r.addedHist}`);
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      toast('导入失败: ' + e.message);
+    }
+  };
+  input.click();
+}
+
 // ── 记忆面板刷新 ─────────────────────────────────────────
 // 把三个 store 的快照拼成一个对象,字段以 tab 名命名(favorites/history/stats),
 // renderers 按需读取对应字段。这样既不污染命名空间,也方便测试注入。
@@ -544,6 +594,8 @@ async function init() {
   }));
   memoryPanel.registerRenderer('stats', (snap) => renderStats(snap, {
     onReset:  ()    => { stats.reset();      refreshMemoryPanel(); toast('已重置统计'); },
+    onExport: ()    => { onExportBackup(); },
+    onImport: ()    => { onImportBackup(); },
   }));
   els.memoryOpenBtn?.addEventListener('click', () => {
     refreshMemoryPanel();
