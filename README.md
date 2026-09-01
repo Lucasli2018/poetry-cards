@@ -61,7 +61,8 @@ poetry-cards/
 ├── index.html              # 单页入口
 ├── styles.css              # 国风宣纸样式（含背景图支持）
 └── src/
-    └── main.js             # 全部逻辑（约 380 行）
+    ├── main.js             # 全部逻辑（限流感知 + 本地兜底）
+    └── poems.local.json    # 本地兜底诗词库（70 首，API 限流时启用）
 ```
 
 ### 数据流
@@ -73,7 +74,9 @@ poetry-cards/
    → 填充分类下拉
 
 2. 用户点 [抽一签]
-   ├─ 池空 → 拉 6 个 random（并发）
+   ├─ 池空 → 限流感知地拉 random（每轮 {FETCH_BATCH}=3 个、间隔 {MIN_GAP_MS}=160ms）
+   │       → 命中 429 读 Retry-After 做指数退避，不立即重试
+   │       → 连续 2 轮全失败（限流/离线）→ 切换本地内置库 src/poems.local.json
    │       → 客户端按 type.id / dynasty.id 过滤
    │       → 加入池
    ├─ 从池随机抽 1 首
@@ -93,6 +96,8 @@ poetry-cards/
 
 - **客户端过滤**：诗泉 API 不支持服务端按 type/dynasty 过滤，必须先全库随机再客户端筛
 - **池化抽卡**：首抽建立 40 首池子，抽取后从池移除，后台静默补池
+- **限流感知**：`/api/poems/random` 有频率限制（429）。请求改为受限并发 + 间隔，命中 429 时读 `Retry-After` 做指数退避，杜绝「限流→立刻重试→再限流」死循环
+- **本地兜底库**：`src/poems.local.json` 内置 70 首精选诗词（ID 与 API 对齐）。API 限流 / 离线时自动顶上，抽卡永远可用；元数据接口不可用时下拉框也由本地目录兜底
 - **去重**：`seenIds` Set 保证同一首诗在本次会话内绝不重复
 - **多源图片守护**：Unsplash Source + Picsum + 纯色兜底，每源 4.5s 超时
 - **localStorage 兜底**：不可用时降级内存 Map

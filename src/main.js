@@ -4,6 +4,16 @@
 // =============================================================
 
 const API = 'https://poetry.palemoky.com';
+const LOCAL_POEMS_URL = './src/poems.local.json';
+
+// ── 限流 / 退避参数 ───────────────────────────────────────
+// 诗泉 API 对 /api/poems/random 有频率限制（429），这里：
+// 1) 限制并发并留出请求间隔，避免一拥而上触发限流；
+// 2) 命中 429 时读取 Retry-After 做指数退避，而非立即重试；
+// 3) API 持续不可用时回退到本地内置诗词库，抽卡永远可用。
+const FETCH_BATCH = 3;          // 每轮并发随机请求数（原 6，已降以避开限流）
+const MIN_GAP_MS = 160;         // 两次随机请求之间的最小间隔
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ── DOM 引用 ───────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -52,12 +62,34 @@ const store = {
   saveFilters: (f) => saveJSON(LS_KEYS.filters, f),
 };
 
-// ── API 调用 ───────────────────────────────────────────────
-async function apiGet(path) {
-  const res = await fetch(API + path, { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  const j = await res.json();
-  return j.data;
+// ── API 调用（限流感知） ──────────────────────────────────
+async function apiGet(path, { maxRetries = 2 } = {}) {
+  let attempt = 0;
+  while (true) {
+    let res;
+    try {
+      res = await fetch(API + path, { headers: { accept: 'application/json' } });
+    } catch (netErr) {
+      // 网络层错误（离线 / DNS / CORS）→ 退避后重试
+      if (attempt < maxRetries) { attempt++; await sleep(1000 * attempt); continue; }
+      throw netErr;
+    }
+    if (res.ok) {
+      const j = await res.json().catch(() => ({}));
+      return j.data;
+    }
+    if (res.status === 429) {
+      // 命中限流：优先尊重服务端 Retry-After，否则指数退避
+      const retryAfter = Number(res.headers.get('Retry-After')) || 0;
+      const wait = retryAfter > 0 ? retryAfter * 1000 : 1200 * (attempt + 1);
+      if (attempt < maxRetries) { attempt++; await sleep(wait); continue; }
+      throw new Error('API 429 (Too Many Requests)');
+    }
+    if (res.status >= 500 && attempt < maxRetries) {
+      attempt++; await sleep(1000 * attempt); continue;
+    }
+    throw new Error(`API ${res.status}`);
+  }
 }
 
 async function loadTypes() {
@@ -67,8 +99,24 @@ async function loadTypes() {
 async function loadDynasties() {
   return await apiGet('/api/dynasties');
 }
+
+// 随机诗：对限流更敏感，少重试以便尽快回退到本地库
 async function randomPoem() {
-  return await apiGet('/api/poems/random');
+  return await apiGet('/api/poems/random', { maxRetries: 1 });
+}
+
+// 带间隔的随机请求发射器：避免瞬时高并发触发 429
+let _lastLaunch = 0;
+async function throttleLaunch() {
+  const now = Date.now();
+  const gap = MIN_GAP_MS - (now - _lastLaunch);
+  if (gap > 0) await sleep(gap);
+  _lastLaunch = Date.now();
+}
+async function fetchRandomSafe() {
+  await throttleLaunch();
+  try { return await randomPoem(); }
+  catch { return null; }   // 失败交给上层逻辑决定（重试 / 本地兜底）
 }
 
 // ── 抽卡池（客户端过滤） ──────────────────────────────────
@@ -78,7 +126,11 @@ const pool = {
   typeFilter: 'all',
   dynastyFilter: 'all',
   inflight: false,
+  usingLocal: false,   // 是否已切换到本地兜底库
 };
+
+// 本地内置诗词库（API 限流 / 不可用时启用）
+let localPoems = [];
 
 function passesFilter(poem) {
   if (pool.typeFilter !== 'all' && poem.type.id !== Number(pool.typeFilter)) return false;
@@ -86,26 +138,57 @@ function passesFilter(poem) {
   return true;
 }
 
+// 用本地库补齐抽卡池。优先匹配当前筛选，匹配不到则放宽筛选兜底，
+// 保证「抽卡永远能抽到东西」。返回本次新加入的数量。
+function fillFromLocal(targetSize) {
+  if (!localPoems.length) return 0;
+  const unseen = localPoems.filter(p => !pool.seenIds.has(p.id));
+  let candidates = unseen.filter(passesFilter);
+  if (candidates.length === 0) candidates = unseen; // 放宽：本地库兜底不限筛选
+  let added = 0;
+  for (const p of candidates) {
+    if (pool.items.length >= targetSize) break;
+    if (pool.items.some(it => it.id === p.id)) continue;
+    pool.seenIds.add(p.id);
+    pool.items.push(p);
+    added++;
+  }
+  if (added > 0 && !pool.usingLocal) {
+    pool.usingLocal = true;
+    toast('诗泉 API 限流中，已切换本地诗词库');
+  }
+  return added;
+}
+
 async function refillPool(targetSize = 40, maxRounds = 60) {
   if (pool.inflight) return;
   pool.inflight = true;
+  let emptyRounds = 0;
   try {
-    let added = 0;
     let rounds = 0;
     while (pool.items.length < targetSize && rounds < maxRounds) {
       rounds++;
-      const batch = await Promise.all(Array.from({ length: 6 }, () => randomPoem().catch(() => null)));
+      // 并发受控 + 间隔受控，避免触发 429
+      const batch = await Promise.all(Array.from({ length: FETCH_BATCH }, () => fetchRandomSafe()));
+      let got = 0;
       for (const p of batch) {
-        if (!p || pool.seenIds.has(p.id)) continue;
+        if (!p) continue;
+        got++;
+        if (pool.seenIds.has(p.id)) continue;
         pool.seenIds.add(p.id);
-        if (passesFilter(p)) {
-          pool.items.push(p);
-          added++;
-          if (pool.items.length >= targetSize) break;
-        }
+        if (passesFilter(p)) pool.items.push(p);
       }
-      if (added === 0 && rounds >= 8) break;
+      if (got === 0) {
+        // 本轮全部失败（很可能 429 / 离线）→ 稍等并累计，连续 2 轮即转本地兜底
+        emptyRounds++;
+        if (emptyRounds >= 2) { fillFromLocal(targetSize); break; }
+        await sleep(1500 * emptyRounds);
+      } else {
+        emptyRounds = 0;
+      }
     }
+    // 池仍不足（如筛选过窄 + 本地也匹配不上）→ 兜底补齐
+    if (pool.items.length < targetSize) fillFromLocal(targetSize);
   } finally {
     pool.inflight = false;
   }
@@ -400,7 +483,25 @@ function fillSelect(select, items, labelField) {
   select.innerHTML = opts.join('');
 }
 
+// 元数据拉取失败时，用本地库的体裁 / 朝代目录兜底填下拉框
+function buildSelectsFromLocal() {
+  const types = [], dyn = [];
+  const tSeen = new Set(), dSeen = new Set();
+  for (const p of localPoems) {
+    if (p.type && !tSeen.has(p.type.id)) { tSeen.add(p.type.id); types.push(p.type); }
+    if (p.dynasty && !dSeen.has(p.dynasty.id)) { dSeen.add(p.dynasty.id); dyn.push(p.dynasty); }
+  }
+  fillSelect(els.type, types, 'name');
+  fillSelect(els.dynasty, dyn, 'name');
+}
+
 async function init() {
+  // 预载本地兜底诗词库（不影响首屏，失败时抽卡仍可走 API）
+  try {
+    const r = await fetch(LOCAL_POEMS_URL, { cache: 'no-cache' });
+    if (r.ok) localPoems = await r.json();
+  } catch { localPoems = []; }
+
   const saved = store.filters();
   pool.typeFilter = saved.type || 'all';
   pool.dynastyFilter = saved.dynasty || 'all';
@@ -413,7 +514,12 @@ async function init() {
     if ([...els.dynasty.options].some(o => o.value === pool.dynastyFilter)) els.dynasty.value = pool.dynastyFilter;
   } catch (e) {
     console.error('元数据加载失败', e);
-    toast('诗泉 API 不可用，请检查网络');
+    if (localPoems.length) {
+      buildSelectsFromLocal();
+      toast('诗泉 API 不可用，已用本地诗词库');
+    } else {
+      toast('诗泉 API 不可用，请检查网络');
+    }
   }
 
   els.drawBtn.addEventListener('click', drawOnce);
