@@ -159,14 +159,25 @@ python scripts/serve.py 8080
 
 ### 已部署（无需本地启动）
 
-托管在 **Gitee Pages**，推送即自动更新；亦同步到 GitHub Pages。直接访问线上地址即可：
-`https://li-luoqiang.gitee.io/poetry-cards/`（以仓库 Pages 设置的实际域名/路径为准）。
+主站在 **Cloudflare Pages**，推送即自动部署；同时同步到 GitHub Pages。直接访问任一地址即可：
+
+- 🚀 **Cloudflare Pages**（主）: <https://poetry-cards.pages.dev/>
+- 🐙 **GitHub Pages**（镜像）: <https://lucasli2018.github.io/poetry-cards/>
+
+> 历史地址:曾托管在 `https://li-luoqiang.gitee.io/poetry-cards/`,现已迁移到 Cloudflare Pages,
+> 旧链接不再保证可用,请以上面两个为准。
 
 ## 部署
 
-托管在 **Gitee**（`gitee.com/li-luoqiang/poetry-cards`），**推送 Gitee 即自动同步到 GitHub**。
+项目**多端自动同步**,只需 `git push origin master`,三端同步生效:
 
-> 因此本项目**只需 `git push origin master`**，不需要单独操作 GitHub 远端或凭证。
+| 平台 | 仓库 | 自动部署 |
+| --- | --- | --- |
+| 🚀 **Cloudflare Pages**(主) | `li-luoqiang/poetry-cards` (Gitee) → Cloudflare 自动构建 | Cloudflare Pages 监听 Gitee 仓库,推送即部署到 <https://poetry-cards.pages.dev/> |
+| 🐙 **GitHub Pages**(镜像) | `lucasli2018/poetry-cards` | 由 GitHub Actions / Pages 自动构建,镜像到 <https://lucasli2018.github.io/poetry-cards/> |
+| 📦 **Gitee 仓库**(源) | `gitee.com/li-luoqiang/poetry-cards` | 作为唯一上游仓库,标签 `v*` 在此归档 |
+
+> 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
 
