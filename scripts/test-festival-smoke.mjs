@@ -1,9 +1,9 @@
 // =============================================================
-// 古韵抽卡 v4.0 · 浏览器冒烟清单(13 项)
+// 古韵抽卡 v4.1 · 浏览器冒烟清单(独立页架构)
 //
 // 运行:  node scripts/test-festival-smoke.mjs http://localhost:8080/
 // 设计: 静态可达性检查 + 关键资源校验
-//   (交互类 6-9 / 11-13 项需要真浏览器手工验收,见 README v4.0.0 段落)
+//   v4.1 起, 贺卡模式 = festival.html 独立页
 // =============================================================
 
 const URL_BASE = process.argv[2] || 'http://localhost:8080/';
@@ -26,15 +26,21 @@ async function probe(path) {
 }
 
 async function main() {
-  console.log(`[v4.0 smoke] probing ${URL_BASE}\n`);
+  console.log(`[v4.1 smoke] probing ${URL_BASE}\n`);
 
-  // ── 冒烟 1:主页可达 + 含 🎴 按钮 ──
+  // ── 冒烟 1:主页 + 贺卡页 都可达 ──
   const home = await probe('');
   ok(home.status === 200, '冒烟 1: 主页 200');
-  ok(home.body.includes('pc-festival-open'), '冒烟 1: header 含 🎴 入口按钮');
+  ok(home.body.includes('pc-festival-open'), '冒烟 1: 主屏含 🎴 入口');
+  ok(home.body.includes('festival.html'), '冒烟 1: 主屏入口指向 festival.html 独立页');
 
-  // ── 冒烟 2:贺卡屏容器存在 ──
-  ok(home.body.includes('pc-festival-screen'), '冒烟 2: 贺卡屏容器已挂载(默认 hidden)');
+  const fpage = await probe('festival.html');
+  ok(fpage.status === 200, '冒烟 1: festival.html 200 (v4.1 独立页)');
+  ok(fpage.body.includes('pc-festival-back'), '冒烟 1: festival.html 含 ← 抽卡 链接');
+  ok(fpage.body.includes('./index.html'), '冒烟 1: 返回链接指向 index.html');
+
+  // ── 冒烟 2:贺卡页 main 容器已挂载(无需 hidden, 直接渲染) ──
+  ok(fpage.body.includes('pc-festival-main'), '冒烟 2: festival.html 含 .pc-festival-main 容器');
 
   // ── 冒烟 3:5 节日数据齐全 ──
   const fjson = await probe('src/festivals.json');
@@ -45,39 +51,40 @@ async function main() {
     ok(f.poems.length >= 5, `冒烟 3: ${f.id} ≥5 首 (实际 ${f.poems.length})`);
   }
 
-  // ── 冒烟 4:festival-ui.js + festival-data.js + festival-draft.js 模块 200 ──
-  for (const m of ['festival-data.js', 'festival-ui.js', 'festival-draft.js']) {
+  // ── 冒烟 4:贺卡页相关模块 200 ──
+  for (const m of ['festival-data.js', 'festival-ui.js', 'festival-draft.js', 'festival-main.js', 'images.js']) {
     const r = await probe('src/' + m);
     ok(r.status === 200, `冒烟 4: ${m} 200`);
   }
 
-  // ── 冒烟 5:main.js 包含 festival-ui import ──
+  // ── 冒烟 5:主 main.js 不再 mountFestivalUI(已迁出) ──
   const main = await probe('src/main.js');
-  ok(main.body.includes('mountFestivalUI'), '冒烟 5: main.js 已接入 mountFestivalUI');
+  ok(!main.body.includes('mountFestivalUI'), '冒烟 5: 主 main.js 不再挂载贺卡 UI(已迁出)');
+  ok(fpage.body.includes('festival-main.js'), '冒烟 5: festival.html 独立 entry');
 
-  // ── 冒烟 6:styles.css 含贺卡屏样式 ──
+  // ── 冒烟 6:styles.css 含贺卡页样式 ──
   const css = await probe('styles.css');
-  ok(css.body.includes('.pc-festival-chip'), '冒烟 6: styles.css 含 .pc-festival-chip');
+  ok(css.body.includes('.pc-festival-app'), '冒烟 6: styles.css 含 .pc-festival-app');
   ok(css.body.includes('.pc-festival-fields'), '冒烟 6: styles.css 含 .pc-festival-fields');
+  ok(css.body.includes('.pc-festival-selects'), '冒烟 6: styles.css 含 .pc-festival-selects');
 
-  // ── 冒烟 7:switch 经典诗词按钮仍在(零侵入底线) ──
+  // ── 冒烟 7:抽卡屏 零侵入 ──
   ok(home.body.includes('pc-local-first'), '冒烟 7: 抽卡屏「经典诗词」按钮未动(零侵入)');
+  ok(home.body.includes('pc-memory-open'), '冒烟 7: 抽卡屏「记忆」按钮未动(零侵入)');
 
-  // ── 冒烟 8:记忆按钮仍在 ──
-  ok(home.body.includes('pc-memory-open'), '冒烟 8: 抽卡屏「记忆」按钮未动(零侵入)');
-
-  // ── 冒烟 9:POEMS 数据完整性 ──
+  // ── 冒烟 8:总诗数 ──
   let totalPoems = 0;
   for (const f of fdata.festivals) totalPoems += f.poems.length;
-  ok(totalPoems >= 25 && totalPoems <= 50, `冒烟 9: 精选诗总数 ${totalPoems} 在 25~50 区间`);
+  ok(totalPoems >= 25 && totalPoems <= 50, `冒烟 8: 精选诗总数 ${totalPoems} 在 25~50 区间`);
 
-  // ── 剩余 4 项需真浏览器交互 ──
-  console.log(`\n[v4.0 smoke] ${passed} passed / ${failed} failed (静态项)`);
-  console.log(`\nℹ  剩余 4 项需真浏览器手工验收(见 README v4.0.0 段落):`);
-  console.log(`   • 点 🎴 → 贺卡屏加载`);
-  console.log(`   • 节日胶囊切换 / 换一首循环`);
-  console.log(`   • 输入字段实时绑定 + 印章切换`);
-  console.log(`   • 下载 PNG 含 4 字段 + 分享降级文案`);
+  // ── 总结 ──
+  console.log(`\n[v4.1 smoke] ${passed} passed / ${failed} failed (静态项)`);
+  console.log(`\nℹ  剩余 5 项需真浏览器交互:`);
+  console.log(`   • 主屏「🎴 贺卡」按钮 → 跳 festival.html`);
+  console.log(`   • 贺卡页字段输入 + 印章下拉 + 节日下拉`);
+  console.log(`   • 贺卡页「← 抽卡」返回主页`);
+  console.log(`   • 草稿跨页保存(主页编辑后跳贺卡页继续)`);
+  console.log(`   • 下载 PNG 含 4 字段`);
 
   if (failed > 0) { console.log(`\n失败项:\n  - ${failures.join('\n  - ')}`); process.exit(1); }
 }

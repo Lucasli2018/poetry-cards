@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>古韵抽卡 · 节日贺卡</title>
+  <meta name="description" content="选个节令 · 写句寄语 · 一键生成水墨意境贺卡 PNG">
+  <meta name="theme-color" content="#a8321e">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- icons -->
+  <link rel="icon" type="image/svg+xml" href="./assets/icons/favicon.svg">
+  <link rel="icon" type="image/x-icon" sizes="any" href="./assets/icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/icons/favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./assets/icons/apple-touch-icon.png">
+
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="pc-page pc-festival-app">
+    <header class="pc-festival-header">
+      <a href="./index.html" class="pc-btn pc-btn--ghost pc-festival-back" id="pc-festival-back"
+         title="返回抽卡" aria-label="返回抽卡主页">← 抽卡</a>
+      <h1 class="pc-festival-title" id="pc-festival-title">贺卡</h1>
+      <span class="pc-festival-spacer" aria-hidden="true"></span>
+    </header>
+
+    <main class="pc-festival-main" id="pc-festival-main" aria-label="节日贺卡编辑器">
+      <!-- 字段区(置顶) -->
+      <section class="pc-festival-fields" id="pc-festival-fields" aria-label="自定义字段"></section>
+
+      <!-- 明信片预览 -->
+      <section class="pc-festival-card" id="pc-festival-card" aria-label="明信片预览"></section>
+
+      <!-- 节令 + 印章 同行下拉(沉底) -->
+      <section class="pc-festival-selects-wrap" id="pc-festival-selects-wrap" aria-label="节令与印章"></section>
+
+      <!-- 操作按钮(沉底,sticky) -->
+      <div class="pc-festival-actions" id="pc-festival-actions" aria-label="贺卡操作"></div>
+    </main>
+  </div>
+
+  <!-- toast 通知宿主 -->
+  <div id="pc-toast-host" class="pc-toast-host" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./src/festival-main.js"></script>
+</body>
+</html>

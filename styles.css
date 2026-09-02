@@ -955,7 +955,7 @@ body {
    v4.0 · 节日贺卡屏
    沿用明信片版式(.postcard) + 朱砂强调色 + 米白纸
    ============================================================= */
-.pc-festival-screen {
+.pc-festival-app {
   display: block;
   max-width: 720px;
   margin: 0 auto;
@@ -1138,7 +1138,9 @@ body {
  * ============================================================ */
 
 /* 整体屏:营造"信匣"氛围 */
-.pc-festival-screen {
+.pc-festival-app {
+  max-width: 720px;          /* v4.1 独立页:覆盖 .pc-page 520px */
+  margin: 0 auto;
   background:
     radial-gradient(circle at top right, rgba(180, 138, 58, 0.08) 0%, transparent 60%),
     radial-gradient(circle at bottom left, rgba(168, 50, 30, 0.05) 0%, transparent 55%),
@@ -1147,7 +1149,7 @@ body {
 }
 
 /* 字段区(置顶):做成"信头" */
-.pc-festival-screen .pc-festival-fields {
+.pc-festival-app .pc-festival-fields {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1160,7 +1162,7 @@ body {
   position: relative;
   box-shadow: 0 2px 8px rgba(46, 43, 39, 0.04);
 }
-.pc-festival-screen .pc-festival-fields::before {
+.pc-festival-app .pc-festival-fields::before {
   content: "敬启者";
   position: absolute;
   top: -10px;
@@ -1172,18 +1174,18 @@ body {
   padding: 0 8px;
   font-family: var(--font-serif, 'Songti SC', serif);
 }
-.pc-festival-screen .pc-festival-fields-row {
+.pc-festival-app .pc-festival-fields-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
-.pc-festival-screen .pc-field-label {
+.pc-festival-app .pc-field-label {
   font-family: var(--font-serif, 'Songti SC', serif);
   color: var(--vermil);
   font-size: 12px;
   letter-spacing: 0.18em;
 }
-.pc-festival-screen .pc-field input {
+.pc-festival-app .pc-field input {
   background: var(--bg);
   border: 1px solid transparent;
   border-bottom: 1px dashed var(--line-strong);
@@ -1193,7 +1195,7 @@ body {
   font-size: 15px;
   transition: border-color .2s ease, background .2s ease;
 }
-.pc-festival-screen .pc-field input:focus {
+.pc-festival-app .pc-field input:focus {
   border-bottom-color: var(--vermil);
   background: rgba(168, 50, 30, 0.03);
 }
@@ -1204,7 +1206,7 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
-.pc-festival-screen .pc-field--select {
+.pc-festival-app .pc-field--select {
   gap: 6px;
 }
 .pc-select {
@@ -1236,12 +1238,12 @@ body {
 .pc-select--seal option { font-family: 'STZhongsong', 'Songti SC', 'KaiTi', cursive; }
 
 /* 预览(明信片)居中 */
-.pc-festival-screen .pc-festival-card {
+.pc-festival-app .pc-festival-card {
   margin: 0 0 20px;
 }
 
 /* 底部操作按钮:全宽 + 沉底 */
-.pc-festival-screen .pc-festival-actions {
+.pc-festival-app .pc-festival-actions {
   display: grid;
   grid-template-columns: 1fr 1.4fr 1fr;
   gap: 8px;
@@ -1254,7 +1256,7 @@ body {
   z-index: 5;
   box-shadow: 0 -2px 12px rgba(46, 43, 39, 0.06);
 }
-.pc-festival-screen .pc-festival-actions .pc-btn {
+.pc-festival-app .pc-festival-actions .pc-btn {
   font-family: var(--font-serif, 'Songti SC', serif);
   font-size: 14px;
   letter-spacing: 0.05em;
@@ -1307,9 +1309,9 @@ body {
 .pc-dark .pc-toast { background: var(--card); color: var(--ink); border: 1px solid var(--vermil); }
 
 /* 暗色适配 v4.0.2 */
-.pc-dark .pc-festival-screen .pc-festival-fields,
-.pc-dark .pc-festival-screen .pc-festival-chips,
-.pc-dark .pc-festival-screen .pc-festival-actions {
+.pc-dark .pc-festival-app .pc-festival-fields,
+.pc-dark .pc-festival-app .pc-festival-chips,
+.pc-dark .pc-festival-app .pc-festival-actions {
   background: var(--card);
   border-color: var(--line-strong);
 }
@@ -1323,8 +1325,74 @@ body {
 
 /* 移动端:8 颗印章变 4 列 */
 @media (max-width: 600px) {
-  .pc-festival-screen .pc-festival-fields-row { grid-template-columns: 1fr; }
+  .pc-festival-app .pc-festival-fields-row { grid-template-columns: 1fr; }
   .pc-seal-grid { grid-template-columns: repeat(4, 1fr); }
-  .pc-festival-screen .pc-festival-actions { grid-template-columns: 1fr 1fr; }
-  .pc-festival-screen .pc-festival-actions .pc-btn:nth-child(1) { grid-column: 1 / -1; }
+  .pc-festival-app .pc-festival-actions { grid-template-columns: 1fr 1fr; }
+  .pc-festival-app .pc-festival-actions .pc-btn:nth-child(1) { grid-column: 1 / -1; }
+}
+
+/* ============================================================
+ *  v4.1 贺卡模式独立页(festival.html)
+ *  ① 顶栏三栏布局:返回 + 标题 + spacer
+ *  ② .pc-festival-main 主内容区
+ *  ③ .pc-festival-selects-wrap 节令+印章 下拉区
+ *  ④ toast 宿主全局置中
+ * ============================================================ */
+.pc-festival-app {
+  display: block;
+  padding: 16px 20px 100px;     /* 底部留 sticky actions 空间 */
+}
+.pc-festival-app .pc-festival-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--line-strong);
+  margin-bottom: 16px;
+}
+.pc-festival-app .pc-festival-title {
+  flex: 1;
+  font-family: var(--font-serif, 'Songti SC', 'STSong', serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  text-align: center;
+}
+.pc-festival-app .pc-festival-spacer {
+  width: 64px;                  /* 平衡 ← 抽卡 button 宽度, 标题居中 */
+  flex-shrink: 0;
+}
+.pc-festival-app .pc-festival-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pc-festival-app .pc-festival-selects-wrap {
+  /* 容纳 .pc-festival-selects 2列 select 网格, 沉底卡片样式 */
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 0 0 12px;
+}
+.pc-festival-app .pc-festival-card {
+  margin: 0;
+}
+.pc-festival-app .pc-festival-empty {
+  text-align: center;
+  padding: 64px 16px;
+  color: var(--sub);
+  font-size: 14px;
+}
+
+/* toast 宿主(贺卡页有,主屏可选) */
+.pc-toast-host {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  pointer-events: none;
 }

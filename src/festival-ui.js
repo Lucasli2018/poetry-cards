@@ -92,40 +92,20 @@ export function mountFestivalUI(storage, els) {
 
   // ── 渲染 ──
   function render() {
-    const screen = els.festivalScreen;
-    if (!screen) return;
     const festival = getFestivalById(state.festivalId) || FESTIVALS[0];
     if (!festival) {
-      screen.innerHTML = `<div class="pc-festival-empty">节日数据加载失败 · 请刷新页面</div>`;
+      if (els.fields) els.fields.innerHTML = `<div class="pc-festival-empty">节日数据加载失败 · 请刷新页面</div>`;
       return;
     }
     const poemEntry = getPoemById(state.poemId);
     const poem = poemEntry?.poem || festival.poems[0];
 
-    // v4.0.3 节日 select
-    const festivalOptions = FESTIVALS.map(f => {
-      const isToday = isTodayFestival(f.id, new Date());
-      const cur = f.id === festival.id;
-      const label = `${f.icon} ${f.name}${isToday ? ' · 今日' : ''}`;
-      return `<option value="${escapeHtml(f.id)}"${cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
-    }).join('');
+    // 标题(动态)——回填当前节日名
+    if (els.title) els.title.textContent = `贺卡 · ${festival.name}`;
 
-    // v4.0.3 印章 select
-    const sealOptions = SEAL_OPTIONS.map(s =>
-      `<option value="${s}"${s === state.sealText ? ' selected' : ''}>${s}</option>`
-    ).join('');
-
-    const mediaHtml = state.bgImg
-      ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`
-      : FALLBACK_LOADING_HTML;
-
-    screen.innerHTML = `
-      <header class="pc-festival-header">
-        <button id="pc-festival-back" class="pc-btn pc-btn--ghost" type="button">← 抽卡</button>
-        <h2 class="pc-festival-title">贺卡 · ${escapeHtml(festival.name)}</h2>
-      </header>
-
-      <section class="pc-festival-fields" aria-label="自定义字段(置顶区)">
+    // ① 字段区
+    if (els.fields) {
+      els.fields.innerHTML = `
         <div class="pc-festival-fields-row">
           <label class="pc-field">
             <span class="pc-field-label">收信人</span>
@@ -140,6 +120,21 @@ export function mountFestivalUI(storage, els) {
           <span class="pc-field-label">寄语</span>
           <input id="pc-f-field-message" type="text" maxlength="${FIELD_LIMITS.message}" value="${escapeHtml(state.message)}" placeholder="${escapeHtml(festival.greeting || '')}">
         </label>
+      `;
+    }
+
+    // ② 节令 + 印章 同行下拉
+    if (els.selects) {
+      const festivalOptions = FESTIVALS.map(f => {
+        const isToday = isTodayFestival(f.id, new Date());
+        const cur = f.id === festival.id;
+        const label = `${f.icon} ${f.name}${isToday ? ' · 今日' : ''}`;
+        return `<option value="${escapeHtml(f.id)}"${cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+      }).join('');
+      const sealOptions = SEAL_OPTIONS.map(s =>
+        `<option value="${s}"${s === state.sealText ? ' selected' : ''}>${s}</option>`
+      ).join('');
+      els.selects.innerHTML = `
         <div class="pc-festival-selects" role="group" aria-label="节令 + 印章">
           <label class="pc-field pc-field--select">
             <span class="pc-field-label">节令</span>
@@ -150,9 +145,15 @@ export function mountFestivalUI(storage, els) {
             <select id="pc-f-field-seal" class="pc-select pc-select--seal">${sealOptions}</select>
           </label>
         </div>
-      </section>
+      `;
+    }
 
-      <section class="pc-festival-card" aria-label="明信片预览">
+    // ③ 预览(明信片)
+    if (els.card) {
+      const mediaHtml = state.bgImg
+        ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`
+        : FALLBACK_LOADING_HTML;
+      els.card.innerHTML = `
         <div class="postcard">
           <div class="postcard-media">${mediaHtml}</div>
           <div class="postcard-body">
@@ -168,29 +169,33 @@ export function mountFestivalUI(storage, els) {
             <span class="postcard-seal" aria-label="印章">${escapeHtml(state.sealText)}</span>
           </div>
         </div>
-      </section>
+      `;
+    }
 
-      <div class="pc-festival-actions">
+    // ④ 操作按钮
+    if (els.actions) {
+      els.actions.innerHTML = `
         <button id="pc-f-btn-next" class="pc-btn" type="button">换一首 ↻</button>
         <button id="pc-f-btn-download" class="pc-btn pc-btn--primary" type="button">下载 PNG</button>
         <button id="pc-f-btn-share" class="pc-btn" type="button">分享</button>
-      </div>
-    `;
+      `;
+    }
 
     bindEvents(festival, poem);
   }
 
   function bindEvents(festival, poem) {
-    els.festivalScreen.querySelector('#pc-festival-back')?.addEventListener('click', onBack);
-    els.festivalScreen.querySelector('#pc-f-btn-next')?.addEventListener('click', onNextPoem);
-    els.festivalScreen.querySelector('#pc-f-btn-download')?.addEventListener('click', onDownload);
-    els.festivalScreen.querySelector('#pc-f-btn-share')?.addEventListener('click', onShare);
+    // v4.1 独立页 — 直接 document 查询(整个 DOM 都是贺卡屏)
+    document.getElementById('pc-festival-back')?.addEventListener('click', onBack);
+    document.getElementById('pc-f-btn-next')?.addEventListener('click', onNextPoem);
+    document.getElementById('pc-f-btn-download')?.addEventListener('click', onDownload);
+    document.getElementById('pc-f-btn-share')?.addEventListener('click', onShare);
 
-    const recipient = els.festivalScreen.querySelector('#pc-f-field-recipient');
-    const sender = els.festivalScreen.querySelector('#pc-f-field-sender');
-    const message = els.festivalScreen.querySelector('#pc-f-field-message');
-    const festivalSel = els.festivalScreen.querySelector('#pc-f-field-festival');
-    const sealSel = els.festivalScreen.querySelector('#pc-f-field-seal');
+    const recipient = document.getElementById('pc-f-field-recipient');
+    const sender = document.getElementById('pc-f-field-sender');
+    const message = document.getElementById('pc-f-field-message');
+    const festivalSel = document.getElementById('pc-f-field-festival');
+    const sealSel = document.getElementById('pc-f-field-seal');
 
     recipient?.addEventListener('input', () => updateField('recipient', recipient.value));
     sender?.addEventListener('input', () => updateField('sender', sender.value));
@@ -203,7 +208,7 @@ export function mountFestivalUI(storage, els) {
     sealSel?.addEventListener('change', () => {
       const seal = sealSel.value;
       updateField('sealText', seal);
-      const sealEl = els.festivalScreen.querySelector('.postcard-seal');
+      const sealEl = document.querySelector('.postcard-seal');
       if (sealEl) sealEl.textContent = seal;
     });
   }
@@ -220,7 +225,7 @@ export function mountFestivalUI(storage, els) {
   }
 
   function updatePreviewRecipient(v) {
-    const card = els.festivalScreen.querySelector('.postcard-body');
+    const card = document.querySelector('.postcard-body');
     if (!card) return;
     let node = card.querySelector('.postcard-gift');
     if (v) {
@@ -235,7 +240,7 @@ export function mountFestivalUI(storage, els) {
   }
 
   function updatePreviewMessage(v) {
-    const card = els.festivalScreen.querySelector('.postcard-body');
+    const card = document.querySelector('.postcard-body');
     if (!card) return;
     let node = card.querySelector('.postcard-message');
     if (v) {
@@ -250,7 +255,7 @@ export function mountFestivalUI(storage, els) {
   }
 
   function updatePreviewSeal(v) {
-    const seal = els.festivalScreen.querySelector('.postcard-seal');
+    const seal = document.querySelector('.postcard-seal');
     if (seal) seal.textContent = v;
   }
 
@@ -299,7 +304,7 @@ export function mountFestivalUI(storage, els) {
       updatePreviewImage();
     } else {
       // 三源全失败 —— 给用户明确提示,而不是永远 loading
-      const media = els.festivalScreen.querySelector('.postcard-media');
+      const media = document.querySelector('.postcard-media');
       if (media) {
         media.innerHTML = '<div class="postcard-media-fallback postcard-media-fallback--error" role="img" aria-label="意境获取失败"><span class="postcard-media-fallback-icon" aria-hidden="true">⛅</span><span class="postcard-media-fallback-text">意境暂不可达,稍后重试</span></div>';
       }
@@ -307,7 +312,7 @@ export function mountFestivalUI(storage, els) {
   }
 
   function updatePreviewImage() {
-    const media = els.festivalScreen.querySelector('.postcard-media');
+    const media = document.querySelector('.postcard-media');
     if (!media) return;
     if (state.bgImg) {
       // 使用已 CORS 化的 bgImg 直接渲染(已是浏览器可绘制的对象),
@@ -322,7 +327,7 @@ export function mountFestivalUI(storage, els) {
   async function onDownload() {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
-    const host = els.festivalScreen.querySelector('.postcard');
+    const host = document.querySelector('.postcard');
     const cv = composeCard(entry.poem, state.bgImg, host, {
       sender: state.sender, recipient: state.recipient,
       message: state.message, sealText: state.sealText,
@@ -341,7 +346,7 @@ export function mountFestivalUI(storage, els) {
   async function onShare() {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
-    const host = els.festivalScreen.querySelector('.postcard');
+    const host = document.querySelector('.postcard');
     const cv = composeCard(entry.poem, state.bgImg, host, {
       sender: state.sender, recipient: state.recipient,
       message: state.message, sealText: state.sealText,
@@ -354,15 +359,19 @@ export function mountFestivalUI(storage, els) {
     }
   }
 
-  function onBack() {
-    if (state.dirty) {
-      if (!confirm('当前贺卡未下载,确定离开?')) return;
+  function onBack(e) {
+    // 草稿在每次 input 都已 debounce 写入 localStorage — 返回主页不会丢
+    // dirty 标志是"已下载/分享过"位, 与草稿无关
+    if (state.dirty && !confirm('当前贺卡未下载,确定离开?(草稿已自动保存,可在主页保留按钮回到此处继续)')) {
+      e?.preventDefault?.();
+      return;
     }
-    hide();
+    // 让 <a> 自然跳转(默认行为)
+    draftStore.flushNow();
   }
 
-  // ── 显示 / 隐藏 ──
-  function show() {
+  // ── 启动(独立页 — 加载即渲染) ──
+  function boot() {
     const draft = draftStore.get();
     if (draft && draft.festivalId && draft.poemId) {
       state = { ...freshState(), ...draft, bgImg: null };
@@ -372,25 +381,9 @@ export function mountFestivalUI(storage, els) {
       lastSavedKey = null;
     }
     state.dirty = false;
-
-    if (els.pcMain) els.pcMain.setAttribute('hidden', '');
-    els.festivalScreen.removeAttribute('hidden');
-    if (history.replaceState) history.replaceState(null, '', '#festival');
     render();
     loadImage();
   }
 
-  function hide() {
-    draftStore.flushNow();   // 离开前确保写盘
-    els.festivalScreen.setAttribute('hidden', '');
-    if (els.pcMain) els.pcMain.removeAttribute('hidden');
-    if (history.replaceState) history.replaceState(null, '', location.pathname);
-    state = freshState();
-    lastSavedKey = null;
-  }
-
-  // ── 入口绑定 ──
-  els.festivalOpen?.addEventListener('click', show);
-
-  return { show, hide };
+  boot();
 }

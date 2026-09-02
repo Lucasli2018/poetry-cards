@@ -24,7 +24,6 @@ import {
   snapshotForExport, downloadSnapshot, parseSnapshot,
   mergeImport, readFileAsText,
 } from './ui/storage-dialog.js';
-import { mountFestivalUI } from './festival-ui.js';   // v4.0 贺卡屏
 
 const LOCAL_POEMS_URL = './src/poems.local.json';
 // ── 诗源:典藏诗库(本地经典,默认) / 随机一遇(诗泉全网) ───────
@@ -50,10 +49,7 @@ const els = {
   srcNote:    $('pc-source-note'),
   localFirstSwitch: $('pc-local-first'),
   memoryOpenBtn: $('pc-memory-open'),
-  // v4.0 贺卡屏入口
-  festivalOpen:    $('pc-festival-open'),
-  festivalScreen:  $('pc-festival-screen'),
-  pcMain:          document.querySelector('.pc-main'),
+  // v4.1 贺卡入口已迁出到独立页 festival.html — 不再绑定
 };
 
 // ── 存储（localStorage 不可用时降级内存） ─────────────────
@@ -651,8 +647,8 @@ async function init() {
     memoryPanel.open(memoryPanel.currentTab);
   });
 
-  // v4.0 节日贺卡屏(双入口方案 C:与 .pc-main 互斥显示)
-  mountFestivalUI(ls, els);
+  // v4.1 贺卡模式已迁出到独立页 festival.html
+  // 主 main.js 不再 mount FestivalUI,festival.html 走自己的 src/festival-main.js
 
   // 预载本地兜底库（首屏前就绪，保证「本地优先」立即可用）
   await loadLocalPoems();
