@@ -103,39 +103,44 @@ const memStore = (() => {
 
 // ───────────────────────────────────────────────────────────
 // 3. cards.composeCard options 扩展
+//    关键底线:不传 options 时 hasOptions=false,与 v3.2.9 像素级一致
+//    (canvas 像素级一致需浏览器跑;node 测派生状态 + 关键不变量)
 // ───────────────────────────────────────────────────────────
-import { composeCard, _snapshot } from '../src/cards.js';
+import { _resolveOptions } from '../src/cards.js';
 
-const samplePoem = {
-  title: '静夜思',
-  content: ['床前明月光，疑是地上霜。', '举头望明月，低头思故乡。'],
-  author: { name: '李白' },
-  dynasty: { name: '唐' },
-  type: { name: '五言绝句' },
-};
-
-const baseHash1 = _snapshot(samplePoem, null, null);
-const baseHash2 = _snapshot(samplePoem, null, null, {});
-eq(baseHash1, baseHash2, '无 options 与空 options 输出一致');
-
-const optHash = _snapshot(samplePoem, null, null, {
-  sender: '老友', recipient: '小王', message: '新春快乐', sealText: '福',
-});
-truthy(optHash !== baseHash1, '传 options 时输出变化');
-
-const optHash2 = _snapshot(samplePoem, null, null, { sender: '', recipient: '', message: '', sealText: '礼' });
-truthy(optHash2 !== optHash, 'sealText 变化 → hash 变');
-
-const optHash3 = _snapshot(samplePoem, null, null, { sender: '', recipient: '张三', message: '', sealText: '诗' });
-truthy(optHash3 !== optHash2, 'recipient 变化 → hash 变');
-
-const optHash4 = _snapshot(samplePoem, null, null, { sender: '', recipient: '', message: '中秋团圆', sealText: '诗' });
-truthy(optHash4 !== optHash2, 'message 变化 → hash 变');
-
-// 回归:传 options 时仍能成功 composeCard(无 throw)
+// 不传 options / null / 空 → 走 v3.2.9 路径(增量区零增量)
 {
-  const cv = composeCard(samplePoem, null, null, { recipient: 'x', message: 'y', sealText: '福' });
-  truthy(cv && cv.tagName === 'CANVAS', '传 options 时 composeCard 返回 canvas');
+  const r1 = _resolveOptions(undefined);
+  const r2 = _resolveOptions(null);
+  const r3 = _resolveOptions({});
+  eq(r1.hasOptions, false, 'undefined → hasOptions=false');
+  eq(r2.hasOptions, false, 'null → hasOptions=false');
+  eq(r3.hasOptions, false, '{} → hasOptions=false');
+  eq(r1.sealChar, '诗', '默认印章 = 诗');
+  eq(r1.recipient, '', '默认 recipient = 空');
+  eq(r1.message, '', '默认 message = 空');
+}
+
+// 三个 options 字段都会被解析
+{
+  const r = _resolveOptions({ sender: 'a', recipient: 'b', message: 'c', sealText: '福' });
+  eq(r.hasOptions, true, '传 options → hasOptions=true');
+  eq(r.recipient, 'b', 'recipient 被提取');
+  eq(r.message, 'c', 'message 被提取');
+  eq(r.sealChar, '福', 'sealText 被提取');
+}
+
+// sealText 缺省时默认「诗」(向后兼容)
+{
+  const r = _resolveOptions({ recipient: 'x' });
+  eq(r.sealChar, '诗', '未指定 sealText → 默认「诗」');
+}
+
+// recipient / message 缺省时为空字符串
+{
+  const r = _resolveOptions({ sealText: '礼' });
+  eq(r.recipient, '', '未指定 recipient → 空');
+  eq(r.message, '', '未指定 message → 空');
 }
 
 console.log(`\n[v4.0 festival] ${passed} passed / ${failed} failed`);

@@ -71,8 +71,8 @@ function wrapLines(ctx, text, maxWidth) {
   return out;
 }
 
-/** 朱砂小印：圆角方块 + 「诗」字 */
-function drawSeal(ctx, x, y, size) {
+/** 朱砂小印：圆角方块 + 「诗」字(默认);v4.0 接受 char 参数切换印章文字 */
+function drawSeal(ctx, x, y, size, char = '诗') {
   ctx.save();
   ctx.fillStyle = C.vermil;
   roundRect(ctx, x, y, size, size, size * 0.14);
@@ -81,7 +81,7 @@ function drawSeal(ctx, x, y, size) {
   ctx.font = `700 ${Math.round(size * 0.62)}px ${FONT_SERIF}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('诗', x + size / 2, y + size / 2 + size * 0.04);
+  ctx.fillText(char, x + size / 2, y + size / 2 + size * 0.04);
   ctx.restore();
 }
 
@@ -106,20 +106,42 @@ function measure(hostEl) {
 
 // ── 主绘制 ───────────────────────────────────────────────
 /**
+ * 解析 options 为内部 normalized 状态。
+ * 纯函数,可独立测试;不传 / 空 options → 与 v3.2.9 行为完全一致。
+ * @param {object} options
+ * @returns {{ hasOptions: boolean, sealChar: string, recipient: string, message: string }}
+ */
+export function _resolveOptions(options) {
+  const o = (options && typeof options === 'object') ? options : {};
+  const hasOptions = Object.keys(o).length > 0;
+  return {
+    hasOptions,
+    sealChar: (hasOptions && o.sealText) ? String(o.sealText) : '诗',
+    recipient: (hasOptions && o.recipient) ? String(o.recipient) : '',
+    message: (hasOptions && o.message) ? String(o.message) : '',
+  };
+}
+
+/**
  * 把「诗 + 图」合成到一张 Canvas。
  * 严格按 DOM 实际尺寸 + dpr 锐化，导出 = 展示 1:1。
  * @param {object} poem   诗泉返回结构 {title, content[], author:{name}, dynasty:{name}, type:{name}}
  * @param {HTMLImageElement|null} bgImg  已带 CORS 的背景图；null 则用水墨渐变
  * @param {HTMLElement} [hostEl]  明信片 DOM 节点（用于量尺寸；可选，向后兼容）
+ * @param {object} [options]  v4.0 贺卡选项:{ sender?, recipient?, message?, sealText? }
+ *   不传 options / 空对象:与 v3.2.9 像素级一致
  * @returns {HTMLCanvasElement}
  */
-export function composeCard(poem, bgImg, hostEl) {
+export function composeCard(poem, bgImg, hostEl, options = {}) {
   const m = hostEl
     ? measure(hostEl)
     : { W: 1080, H: 1440, cssW: 1080, cssH: 1440, dpr: 1 };   // 兜底:未传 host 时用 3:4 默认值
   const { W: CARD_W, H: CARD_H, dpr } = m;
   // 字号锚 = CSS 像素(未 dpr),与页面渲染 1:1
   const FONT_W = m.cssW;
+
+  // v4.0 贺卡字段解析(纯函数分支;不传 options 时 hasOptions=false,后续跳过所有增量)
+  const opt = _resolveOptions(options);
 
   const cv = document.createElement('canvas');
   cv.width = CARD_W;
@@ -237,7 +259,24 @@ export function composeCard(poem, bgImg, hostEl) {
     ctx.fillText(ln, centerX, y);
   }
 
-  // ⑦ 底部落款 + 朱砂印
+  // ── v4.0 增量:送给 / 寄语(opt.hasOptions 时才绘制) ──
+  if (opt.hasOptions) {
+    const giftPx = Math.max(14, Math.round(FONT_W * 0.026));
+    if (opt.recipient) {
+      y += giftPx + Math.round(giftPx * 0.4);
+      ctx.fillStyle = C.sub;
+      ctx.font = `400 ${giftPx}px ${FONT_SANS}`;
+      ctx.fillText(`送给 ${opt.recipient}`, centerX, y);
+    }
+    if (opt.message) {
+      y += giftPx + Math.round(giftPx * 0.6);
+      ctx.fillStyle = C.vermil;
+      ctx.font = `600 ${giftPx}px ${FONT_SERIF}`;
+      ctx.fillText(opt.message, centerX, y);
+    }
+  }
+
+  // ⑦ 底部落款 + 朱砂印(v4.0:印章文字按 opt.sealChar 切换,默认「诗」)
   const footY = CARD_H - Math.round(CARD_H * 0.082);
   ctx.fillStyle = C.sub;
   ctx.font = `400 ${footPx}px ${FONT_SANS}`;
@@ -245,7 +284,7 @@ export function composeCard(poem, bgImg, hostEl) {
   ctx.fillText('古韵抽卡 · 一图一诗', padX, footY);
 
   const sealSize = Math.max(36, Math.round(FONT_W * 0.048));
-  drawSeal(ctx, CARD_W - padX - sealSize, footY - sealSize + Math.round(footPx * 0.5), sealSize);
+  drawSeal(ctx, CARD_W - padX - sealSize, footY - sealSize + Math.round(footPx * 0.5), sealSize, opt.sealChar);
 
   return cv;
 }
