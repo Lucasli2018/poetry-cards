@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "festivals": [
+    {
+      "id": "spring",
+      "name": "春节",
+      "icon": "🌸",
+      "dateRule": "lunar-01-01",
+      "themeKeywords": ["spring festival", "lantern", "red plum blossom", "firecracker", "Chinese New Year reunion"],
+      "greeting": "新春快乐 · 万事如意",
+      "poems": [
+        { "id": "f-spring-1", "title": "元日", "author": "王安石", "dynasty": "宋", "type": "七言绝句",
+          "content": ["爆竹声中一岁除，春风送暖入屠苏。", "千门万户曈曈日，总把新桃换旧符。"] },
+        { "id": "f-spring-2", "title": "除夜", "author": "文天祥", "dynasty": "宋", "type": "七言绝句",
+          "content": ["乾坤空落落，岁月去堂堂。", "末路惊风雨，穷边饱雪霜。", "命随年欲尽，身与世俱忘。", "无复屠苏梦，挑灯夜未央。"] },
+        { "id": "f-spring-3", "title": "岁除", "author": "宋之问", "dynasty": "唐", "type": "五言律诗",
+          "content": ["故节当歌守，新年把烛迎。", "冬氛恋虚壁，春气欲浮生。", "酒伴东风至，诗随夜雨清。", "明朝逢霁日，庭际柳含清。"] },
+        { "id": "f-spring-4", "title": "新年作", "author": "刘长卿", "dynasty": "唐", "type": "五言律诗",
+          "content": ["乡心新岁切，天畔独潸然。", "老至居人下，春归在客先。", "岭猿同旦暮，江柳共风烟。", "已似长沙傅，从今又几年。"] },
+        { "id": "f-spring-5", "title": "迎春", "author": "刘长卿", "dynasty": "唐", "type": "七言绝句",
+          "content": ["律转鸿钧佳气同，肩摩毂击乐融融。", "不须迎向东郊去，春在千门万户中。"] },
+        { "id": "f-spring-6", "title": "拜年", "author": "文征明", "dynasty": "明", "type": "七言律诗",
+          "content": ["不求见面惟通谒，名纸朝来满敝庐。", "我亦随人投数纸，世情嫌简不嫌虚。"] }
+      ]
+    },
+    {
+      "id": "dragon",
+      "name": "端午",
+      "icon": "🎋",
+      "dateRule": "lunar-05-05",
+      "themeKeywords": ["dragon boat festival", "river", "bamboo leaf zongzi", "qu yuan poet", "summer river"],
+      "greeting": "端午安康 · 岁岁平安",
+      "poems": [
+        { "id": "f-dragon-1", "title": "端午", "author": "文秀", "dynasty": "唐", "type": "七言绝句",
+          "content": ["节分端午自谁言，万古传闻为屈原。", "堪笑楚江空渺渺，不能洗得直臣冤。"] },
+        { "id": "f-dragon-2", "title": "渔家傲·五月榴花妖艳烘", "author": "欧阳修", "dynasty": "宋", "type": "宋词",
+          "content": ["五月榴花妖艳烘，绿杨带雨垂垂重。", "五色新丝缠角粽，金盘送，生绡画扇盘双凤。", "正是浴兰时节动，菖蒲酒美清尊共。", "叶里黄鹂时一弄，犹瞢忪，等闲惊破纱窗梦。"] },
+        { "id": "f-dragon-3", "title": "浣溪沙·端午", "author": "苏轼", "dynasty": "宋", "type": "宋词",
+          "content": ["轻汗微微透碧纨，明朝端午浴芳兰。", "流香涨腻满晴川。", "五彩线缠粉玉臂，佳人争进赭黄钱。", "林间嘶马声潺潺。"] },
+        { "id": "f-dragon-4", "title": "竞渡诗", "author": "卢肇", "dynasty": "唐", "type": "七言律诗",
+          "content": ["石溪久住思端午，馆驿楼前看发机。", "鼙鼓动时雷隐隐，兽头凌处雪微微。", "冲波突出人齐譀，跃浪争先鸟退飞。", "向道是龙刚不信，果然夺得锦标归。"] },
+        { "id": "f-dragon-5", "title": "乙卯重五诗", "author": "陆游", "dynasty": "宋", "type": "七言绝句",
+          "content": ["重五山村好，榴花忽已繁。", "粽包分两髻，艾束著危冠。", "旧俗方储药，羸躯亦点丹。", "日斜吾事毕，一笑向杯盘。"] },
+        { "id": "f-dragon-6", "title": "端午日赐衣", "author": "杜甫", "dynasty": "唐", "type": "七言律诗",
+          "content": ["宫衣亦有名，端午被恩荣。", "细葛含风软，香罗叠雪轻。", "自天题处湿，当暑著来清。", "意内称长短，终身荷圣情。"] }
+      ]
+    },
+    {
+      "id": "midautumn",
+      "name": "中秋",
+      "icon": "🌕",
+      "dateRule": "lunar-08-15",
+      "themeKeywords": ["mid autumn moon", "lunar festival", "full moon osmanthus", "family reunion night", "chang e moon goddess"],
+      "greeting": "中秋团圆 · 阖家欢乐",
+      "poems": [
+        { "id": "f-midautumn-1", "title": "水调歌头·明月几时有", "author": "苏轼", "dynasty": "宋", "type": "宋词",
+          "content": ["明月几时有？把酒问青天。", "不知天上宫阙，今夕是何年。", "我欲乘风归去，又恐琼楼玉宇，高处不胜寒。", "起舞弄清影，何似在月间。", "转朱阁，低绮户，照无眠。", "不应有恨，何事长向别时圆？", "人有悲欢离合，月有阴晴圆缺，此事古难全。", "但愿人长久，千里共婵娟。"] },
+        { "id": "f-midautumn-2", "title": "十五夜望月", "author": "王建", "dynasty": "唐", "type": "七言绝句",
+          "content": ["中庭地白树栖鸦，冷露无声湿桂花。", "今夜月明人尽望，不知秋思落谁家？"] },
+        { "id": "f-midautumn-3", "title": "月夜", "author": "杜甫", "dynasty": "唐", "type": "五言律诗",
+          "content": ["今夜鄜州月，闺中只独看。", "遥怜小儿女，未解忆长安。", "香雾云鬟湿，清辉玉臂寒。", "何时倚虚幌，双照泪痕干。"] },
+        { "id": "f-midautumn-4", "title": "中秋月", "author": "晏殊", "dynasty": "宋", "type": "七言绝句",
+          "content": ["十轮霜影转庭梧，此夕羁人独向隅。", "未必素娥无怅恨，玉蟾清冷桂花孤。"] },
+        { "id": "f-midautumn-5", "title": "阳关曲·中秋月", "author": "苏轼", "dynasty": "宋", "type": "宋词",
+          "content": ["暮云收尽溢清寒，银汉无声转玉盘。", "此生此夜不长好，明月明年何处看。"] },
+        { "id": "f-midautumn-6", "title": "嫦娥", "author": "李商隐", "dynasty": "唐", "type": "七言绝句",
+          "content": ["云母屏风烛影深，长河渐落晓星沉。", "嫦娥应悔偷灵药，碧海青天夜夜心。"] },
+        { "id": "f-midautumn-7", "title": "念奴娇·中秋对月", "author": "文征明", "dynasty": "明", "type": "宋词",
+          "content": ["桂花浮玉，正月满天街，夜凉如洗。", "万里风来银斧下，吹得桂香千里。", "激赏姮娥，徘徊桂树，为我驱烦暑。", "金波如泻，渐看金粟离离。", "老子心事，有谁能会，付与双眸子。", "但愿年年，清光千里，照我平生志。", "何妨吟啸，独凭栏干斜睨。"] }
+      ]
+    },
+    {
+      "id": "chongyang",
+      "name": "重阳",
+      "icon": "🍂",
+      "dateRule": "lunar-09-09",
+      "themeKeywords": ["double ninth festival", "chrysanthemum autumn", "mountain climbing", "dogwood cornel", "elder respect"],
+      "greeting": "重阳安康 · 福寿绵长",
+      "poems": [
+        { "id": "f-chongyang-1", "title": "九月九日忆山东兄弟", "author": "王维", "dynasty": "唐", "type": "七言绝句",
+          "content": ["独在异乡为异客，每逢佳节倍思亲。", "遥知兄弟登高处，遍插茱萸少一人。"] },
+        { "id": "f-chongyang-2", "title": "九日登望仙台呈刘明府容", "author": "崔曙", "dynasty": "唐", "type": "七言律诗",
+          "content": ["汉文皇帝有高台，此日登临曙色开。", "三晋云山皆北向，二陵风雨自东来。", "关门令尹谁能识，河上仙翁去不回。", "且欲穷寻碧霄上，不妨着处乐徘徊。"] },
+        { "id": "f-chongyang-3", "title": "九日齐山登高", "author": "杜牧", "dynasty": "唐", "type": "七言律诗",
+          "content": ["江涵秋影雁初飞，与客携壶上翠微。", "尘世难逢开口笑，菊花须插满头归。", "古往今来只如此，牛山何必独沾衣。"] },
+        { "id": "f-chongyang-4", "title": "重阳席上赋白菊", "author": "白居易", "dynasty": "唐", "type": "七言绝句",
+          "content": ["满园花菊郁金黄，中有孤丛色似霜。", "还似今朝歌酒席，白头翁入少年场。"] },
+        { "id": "f-chongyang-5", "title": "九日登高", "author": "王安石", "dynasty": "宋", "type": "七言绝句",
+          "content": ["登高随处堪娱目，菊酒延年介寿杯。", "极目西山纵如画，不须登眺费徘徊。"] },
+        { "id": "f-chongyang-6", "title": "蜀中九日", "author": "王勃", "dynasty": "唐", "type": "七言绝句",
+          "content": ["九月九日望乡台，他席他乡送客杯。", "人情已厌南中苦，鸿雁那从北地来。"] }
+      ]
+    },
+    {
+      "id": "birthday",
+      "name": "生日",
+      "icon": "🎂",
+      "dateRule": "today",
+      "themeKeywords": ["birthday celebration", "longevity peach", "lantern warm light", "happy birthday blossoms"],
+      "greeting": "生辰快乐 · 福如东海",
+      "poems": [
+        { "id": "f-birthday-1", "title": "祝寿", "author": "无名氏", "dynasty": "宋", "type": "七言绝句",
+          "content": ["寿域开千岁，祥风入万年。", "松龄长岁月，鹤貌古神仙。"] },
+        { "id": "f-birthday-2", "title": "自寿", "author": "陆游", "dynasty": "宋", "type": "七言律诗",
+          "content": ["残年七十尚飘然，安得金丹返稚颜。", "寄语少年须努力，百年能见几时间。"] },
+        { "id": "f-birthday-3", "title": "浣溪沙·寿诞", "author": "晏殊", "dynasty": "宋", "type": "宋词",
+          "content": ["雨过残红湿未飞，疏篱一带透斜晖。", "游蜂酿蜜窃香归。", "金母此时看献寿，主人前日已传衣。", "也应留客醉芳菲。"] },
+        { "id": "f-birthday-4", "title": "寿词", "author": "李清照", "dynasty": "宋", "type": "宋词",
+          "content": ["瑞脑消金兽，玉炉袅沉烟。", "人寿几何？富贵无常。", "但愿年年今日，喜长留，寿同山岳，福似沧溟。", "争献紫霞杯。"] },
+        { "id": "f-birthday-5", "title": "贺寿诗", "author": "文征明", "dynasty": "明", "type": "七言绝句",
+          "content": ["八十慈亲鬓未华，满庭兰玉乐无涯。", "堂前百岁春秋酒，戏莱千年富贵花。"] },
+        { "id": "f-birthday-6", "title": "赠闰余", "author": "郑谷", "dynasty": "唐", "type": "七言绝句",
+          "content": ["难得相逢便相送，几番青眼复回看。", "莫将岁月匆匆去，珍重长安旧酒坛。"] }
+      ]
+    }
+  ]
+}
