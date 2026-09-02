@@ -102,18 +102,18 @@ export function mountFestivalUI(storage, els) {
     const poemEntry = getPoemById(state.poemId);
     const poem = poemEntry?.poem || festival.poems[0];
 
-    const chipsHtml = FESTIVALS.map(f => {
+    // v4.0.3 节日 select
+    const festivalOptions = FESTIVALS.map(f => {
       const isToday = isTodayFestival(f.id, new Date());
       const cur = f.id === festival.id;
-      return `
-        <button type="button" class="pc-festival-chip${cur ? ' is-current' : ''}"
-                data-festival-id="${escapeHtml(f.id)}"
-                aria-pressed="${cur}">
-          <span class="pc-festival-chip-icon" aria-hidden="true">${escapeHtml(f.icon)}</span>
-          <span class="pc-festival-chip-name">${escapeHtml(f.name)}</span>
-          ${isToday ? '<span class="pc-festival-chip-dot" title="今日" aria-label="今日">·今</span>' : ''}
-        </button>`;
+      const label = `${f.icon} ${f.name}${isToday ? ' · 今日' : ''}`;
+      return `<option value="${escapeHtml(f.id)}"${cur ? ' selected' : ''}>${escapeHtml(label)}</option>`;
     }).join('');
+
+    // v4.0.3 印章 select
+    const sealOptions = SEAL_OPTIONS.map(s =>
+      `<option value="${s}"${s === state.sealText ? ' selected' : ''}>${s}</option>`
+    ).join('');
 
     const mediaHtml = state.bgImg
       ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`
@@ -140,15 +140,15 @@ export function mountFestivalUI(storage, els) {
           <span class="pc-field-label">寄语</span>
           <input id="pc-f-field-message" type="text" maxlength="${FIELD_LIMITS.message}" value="${escapeHtml(state.message)}" placeholder="${escapeHtml(festival.greeting || '')}">
         </label>
-        <div class="pc-field pc-field--seals" role="radiogroup" aria-label="印章选择">
-          <span class="pc-field-label">印章</span>
-          <div class="pc-seal-grid">
-            ${SEAL_OPTIONS.map(s => `
-              <button type="button" class="pc-seal-chip${s === state.sealText ? ' is-current' : ''}" role="radio" aria-checked="${s === state.sealText}" data-seal="${s}">
-                <span class="pc-seal-chip-text">${s}</span>
-              </button>
-            `).join('')}
-          </div>
+        <div class="pc-festival-selects" role="group" aria-label="节令 + 印章">
+          <label class="pc-field pc-field--select">
+            <span class="pc-field-label">节令</span>
+            <select id="pc-f-field-festival" class="pc-select pc-select--festival">${festivalOptions}</select>
+          </label>
+          <label class="pc-field pc-field--select">
+            <span class="pc-field-label">印章</span>
+            <select id="pc-f-field-seal" class="pc-select pc-select--seal">${sealOptions}</select>
+          </label>
         </div>
       </section>
 
@@ -170,11 +170,6 @@ export function mountFestivalUI(storage, els) {
         </div>
       </section>
 
-      <div class="pc-festival-chips" role="group" aria-label="节日选择">
-        <span class="pc-festival-chips-label">节令</span>
-        <div class="pc-festival-chips-row">${chipsHtml}</div>
-      </div>
-
       <div class="pc-festival-actions">
         <button id="pc-f-btn-next" class="pc-btn" type="button">换一首 ↻</button>
         <button id="pc-f-btn-download" class="pc-btn pc-btn--primary" type="button">下载 PNG</button>
@@ -187,9 +182,6 @@ export function mountFestivalUI(storage, els) {
 
   function bindEvents(festival, poem) {
     els.festivalScreen.querySelector('#pc-festival-back')?.addEventListener('click', onBack);
-    els.festivalScreen.querySelectorAll('.pc-festival-chip').forEach(btn => {
-      btn.addEventListener('click', () => onFestivalChange(btn.dataset.festivalId));
-    });
     els.festivalScreen.querySelector('#pc-f-btn-next')?.addEventListener('click', onNextPoem);
     els.festivalScreen.querySelector('#pc-f-btn-download')?.addEventListener('click', onDownload);
     els.festivalScreen.querySelector('#pc-f-btn-share')?.addEventListener('click', onShare);
@@ -197,25 +189,22 @@ export function mountFestivalUI(storage, els) {
     const recipient = els.festivalScreen.querySelector('#pc-f-field-recipient');
     const sender = els.festivalScreen.querySelector('#pc-f-field-sender');
     const message = els.festivalScreen.querySelector('#pc-f-field-message');
+    const festivalSel = els.festivalScreen.querySelector('#pc-f-field-festival');
+    const sealSel = els.festivalScreen.querySelector('#pc-f-field-seal');
 
     recipient?.addEventListener('input', () => updateField('recipient', recipient.value));
     sender?.addEventListener('input', () => updateField('sender', sender.value));
     message?.addEventListener('input', () => updateField('message', message.value));
 
-    // 印章选择:8 颗 button,radiogroup
-    els.festivalScreen.querySelectorAll('.pc-seal-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const seal = btn.dataset.seal;
-        updateField('sealText', seal);
-        // 局部更新选中态,避免整屏 render 闪动
-        els.festivalScreen.querySelectorAll('.pc-seal-chip').forEach(b => {
-          const on = b.dataset.seal === seal;
-          b.classList.toggle('is-current', on);
-          b.setAttribute('aria-checked', on ? 'true' : 'false');
-        });
-        const sealEl = els.festivalScreen.querySelector('.postcard-seal');
-        if (sealEl) sealEl.textContent = seal;
-      });
+    // v4.0.3 节日 select 切换
+    festivalSel?.addEventListener('change', () => onFestivalChange(festivalSel.value));
+
+    // v4.0.3 印章 select 切换
+    sealSel?.addEventListener('change', () => {
+      const seal = sealSel.value;
+      updateField('sealText', seal);
+      const sealEl = els.festivalScreen.querySelector('.postcard-seal');
+      if (sealEl) sealEl.textContent = seal;
     });
   }
 

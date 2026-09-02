@@ -227,33 +227,30 @@ function picsumUrl(opts = {}) {
 
 /**
  * 为一首诗取一张配图。多源依次尝试，任一成功即返回。
- * 顺序：Pollinations(6s) → LoremFlickr(8s) → Picsum(6s)
+ * 顺序：Pollinations(3s) → Picsum(3s) — 总预算 5.5s 内必出图
  * @param {object} poem
- * @param {{width?:number, height?:number, seed?:number}} opts
+ * @param {{width?:number, height?:number, seed?:number, totalBudgetMs?:number}} opts
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  // v4.0.2:总预算控制,避免 3 源串行超 10s
-  const totalBudget = Math.max(2000, opts.totalBudgetMs || 8000);
+  // v4.0.3:直连 API + 极简兜底 — Pollinations AI (3s) → Picsum 兜底
+  //   - 移除 LoremFlickr(测试中 Picsum 一样稳定但更快出)
+  //   - 短总预算,保证 5s 内必出图或 null
+  const totalBudget = Math.max(2000, opts.totalBudgetMs || 5500);
   const t0 = Date.now();
   const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
 
-  // ① Pollinations AI：按诗意生成，最贴合(快的时候 1.5s)
+  // ① Pollinations AI(按诗意生成,最贴合)
   const aiUrl = pollinationsUrl(poem, opts);
   let img = await loadImage(aiUrl, Math.min(AI_TIMEOUT_MS, remain()));
   if (img) return { img, url: aiUrl, source: 'Pollinations' };
 
-  // ② LoremFlickr：风景关键词兜底
-  const flickrUrl = loremFlickrUrl(poem, opts);
-  img = await loadImage(flickrUrl, Math.min(IMG_TIMEOUT_MS, remain()));
-  if (img) return { img, url: flickrUrl, source: 'LoremFlickr' };
-
-  // ③ Picsum：稳定随机兜底(几乎秒出)
+  // ② Picsum 兜底(几乎秒出,稳定)
   const pUrl = picsumUrl(opts);
-  img = await loadImage(pUrl, Math.min(5000, remain()));
+  img = await loadImage(pUrl, Math.min(3000, remain()));
   if (img) return { img, url: pUrl, source: 'Picsum' };
 
-  // ④ 都失败：返回 null，由调用方用 CSS 渐变兜底
+  // ③ 都失败：返回 null,由调用方用 CSS 渐变兜底
   return { img: null, url: null, source: 'none' };
 }
 

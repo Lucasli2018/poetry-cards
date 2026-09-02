@@ -1198,144 +1198,46 @@ body {
   background: rgba(168, 50, 30, 0.03);
 }
 
-/* 印章 chip 网格:8 颗,选中态朱砂+描金 */
-.pc-festival-screen .pc-field--seals {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.pc-seal-grid {
+/* v4.0.3 节令 + 印章 同行下拉 (两 select 横排) */
+.pc-festival-selects {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pc-festival-screen .pc-field--select {
   gap: 6px;
 }
-.pc-seal-chip {
-  aspect-ratio: 1 / 1;
+.pc-select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--font-serif, 'Songti SC', serif);
+  font-size: 14px;
+  color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-left: 3px solid var(--vermil);
+  border-radius: 6px;
+  padding: 9px 32px 9px 10px;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'STZhongsong', 'Songti SC', 'KaiTi', cursive;
-  font-size: 18px;
-  color: var(--ink);
-  padding: 0;
-  transition: all .15s ease;
-  position: relative;
+  /* 自定义下拉箭头(朱砂色) */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M4 6l4 4 4-4' stroke='%23a8321e' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
-.pc-seal-chip:hover {
+.pc-select:hover { border-color: var(--vermil); }
+.pc-select:focus {
+  outline: none;
   border-color: var(--vermil);
-  color: var(--vermil);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(168, 50, 30, 0.15);
 }
-.pc-seal-chip.is-current {
-  background: var(--vermil);
-  color: #fff7e6;
-  border-color: var(--gold);
-  box-shadow:
-    inset 0 0 0 1px var(--gold),
-    0 1px 0 rgba(180, 138, 58, 0.4),
-    0 2px 4px rgba(168, 50, 30, 0.25);
-  transform: translateY(0);
-  font-weight: 600;
-}
-.pc-seal-chip.is-current::after {
-  content: "";
-  position: absolute;
-  top: 2px; right: 2px;
-  width: 5px; height: 5px;
-  background: var(--gold);
-  border-radius: 50%;
-  opacity: 0.7;
-}
+.pc-select--festival option { font-family: inherit; }
+.pc-select--seal option { font-family: 'STZhongsong', 'Songti SC', 'KaiTi', cursive; }
 
 /* 预览(明信片)居中 */
 .pc-festival-screen .pc-festival-card {
   margin: 0 0 20px;
-}
-
-/* 节日胶囊区:沉底 + "节令"小字标签 */
-.pc-festival-screen .pc-festival-chips {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  margin: 0 0 12px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-}
-.pc-festival-screen .pc-festival-chips-label {
-  font-family: var(--font-serif, 'Songti SC', serif);
-  font-size: 13px;
-  color: var(--vermil);
-  letter-spacing: 0.2em;
-  flex-shrink: 0;
-  padding-right: 10px;
-  border-right: 1px solid var(--line-strong);
-}
-.pc-festival-screen .pc-festival-chips-row {
-  display: flex;
-  gap: 8px;
-  flex: 1;
-}
-.pc-festival-screen .pc-festival-chip {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
-  background: var(--bg);
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
-  font-family: var(--font-serif, 'Songti SC', serif);
-  font-size: 13px;
-  color: var(--ink);
-  cursor: pointer;
-  transition: all .2s ease;
-  position: relative;
-}
-.pc-festival-screen .pc-festival-chip:hover {
-  border-color: var(--vermil);
-  color: var(--vermil);
-  transform: translateY(-1px);
-}
-.pc-festival-screen .pc-festival-chip.is-current {
-  background: var(--vermil);
-  color: #fff7e6;
-  border-color: var(--gold);
-  font-weight: 600;
-  box-shadow:
-    inset 0 0 0 1px var(--gold),
-    0 2px 6px rgba(168, 50, 30, 0.3);
-  transform: translateY(-1px);
-}
-.pc-festival-screen .pc-festival-chip.is-current::before {
-  content: "✓";
-  display: inline-block;
-  font-size: 11px;
-  margin-right: 2px;
-  color: var(--gold);
-  font-weight: 700;
-}
-.pc-festival-screen .pc-festival-chip-icon {
-  font-size: 15px;
-}
-.pc-festival-screen .pc-festival-chip-dot {
-  display: inline-block;
-  background: var(--gold);
-  color: var(--ink);
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
 }
 
 /* 底部操作按钮:全宽 + 沉底 */

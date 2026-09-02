@@ -149,9 +149,12 @@ try {
   // 清掉任何残留草稿(确保 default state 干净)
   await evaluate(`localStorage.removeItem('pc_v3_festival_draft')`);
 
-  // ── 冒烟:主页含 🎴 入口 ──
+  // ── 冒烟:主页含 🎴 入口(已移到主屏底部) ──
   const hasBtn = await evaluate(`!!document.getElementById('pc-festival-open')`);
-  ok(hasBtn, 'headless 1: header 含 🎴 入口');
+  ok(hasBtn, 'headless 1: 主屏底部含 🎴 入口');
+  // 验证入口在 .pc-actions 内
+  const inActions = await evaluate(`!!document.querySelector('.pc-actions #pc-festival-open')`);
+  ok(inActions, 'headless 1b: 入口在 .pc-actions 内(主屏底部)');
 
   // ── 冒烟:点击 🎴 进入贺卡屏 ──
   await evaluate(`document.getElementById('pc-festival-open').click()`);
@@ -159,13 +162,13 @@ try {
   const screenVisible = await evaluate(`!document.getElementById('pc-festival-screen').hidden`);
   ok(screenVisible, 'headless 2: 点击 🎴 后贺卡屏可见');
 
-  // ── 冒烟:贺卡屏有 5 个胶囊 ──
-  const chipsCount = await evaluate(`document.querySelectorAll('.pc-festival-chip').length`);
-  ok(chipsCount === 5, `headless 3: 5 个节日胶囊(实际 ${chipsCount})`);
+  // ── 冒烟:贺卡屏有 5 个节日选项 ──
+  const festOpts = await evaluate(`document.querySelectorAll('#pc-f-field-festival option').length`);
+  ok(festOpts === 5, `headless 3: 5 个节日选项(实际 ${festOpts})`);
 
   // ── 冒烟:默认选中第一个(春节) ──
-  const curChip = await evaluate(`document.querySelector('.pc-festival-chip.is-current')?.dataset?.festivalId`);
-  ok(curChip === 'spring', `headless 4: 默认选中「春节」(实际 ${curChip})`);
+  const curFest = await evaluate(`document.getElementById('pc-f-field-festival')?.value`);
+  ok(curFest === 'spring', `headless 4: 默认选中「春节」(实际 ${curFest})`);
 
   // ── 冒烟:贺卡屏有诗题 + 元日 ──
   const titleText = await evaluate(`document.querySelector('.pc-festival-screen .postcard-title')?.textContent`);
@@ -175,11 +178,16 @@ try {
   await evaluate(`localStorage.removeItem('pc_v3_festival_draft')`);
   await new Promise(r => setTimeout(r, 200));
 
-  // ── 冒烟:切换到中秋 ──
-  await evaluate(`document.querySelector('[data-festival-id="midautumn"]').click()`);
+  // ── 冒烟:切换到中秋(v4.0.3 改用 #pc-f-field-festival select) ──
+  await evaluate(`(() => {
+    const sel = document.getElementById('pc-f-field-festival');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+    setter.call(sel, 'midautumn');
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
   await new Promise(r => setTimeout(r, 500));
-  const curChip2 = await evaluate(`document.querySelector('.pc-festival-chip.is-current')?.dataset?.festivalId`);
-  ok(curChip2 === 'midautumn', 'headless 6: 切换到「中秋」生效');
+  const curSelVal = await evaluate(`document.getElementById('pc-f-field-festival')?.value`);
+  ok(curSelVal === 'midautumn', 'headless 6: 切换到「中秋」生效');
 
   // ── 冒烟:换一首 ──
   const titleBefore = await evaluate(`document.querySelector('.pc-festival-screen .postcard-title')?.textContent`);
@@ -198,17 +206,18 @@ try {
   const giftText = await evaluate(`document.querySelector('.postcard-gift')?.textContent`);
   ok(giftText && giftText.includes('小王'), `headless 8: 送给字段绑定 (实际 ${giftText})`);
 
-  // ── 冒烟:印章切换(v4.0.2 印章是 .pc-seal-chip 按钮,radiogroup) ──
-  await evaluate(`
-    const chip = document.querySelector('.pc-festival-screen .pc-seal-chip[data-seal="福"]');
-    chip.click();
-  `);
+  // ── 冒烟:印章切换(v4.0.3 改用 #pc-f-field-seal select) ──
+  await evaluate(`(() => {
+    const s = document.getElementById('pc-f-field-seal');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+    setter.call(s, '福');
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
   await new Promise(r => setTimeout(r, 300));
   const sealText = await evaluate(`document.querySelector('.pc-festival-screen .postcard-seal')?.textContent`);
   ok(sealText === '福', `headless 9: 印章切换为「福」(实际 ${sealText})`);
-  // 验证选中态视觉
-  const isCur = await evaluate(`document.querySelector('.pc-festival-screen .pc-seal-chip[data-seal="福"]')?.classList.contains('is-current')`);
-  ok(isCur, 'headless 9b: 印章「福」视觉选中态');
+  const sealSelVal = await evaluate(`document.getElementById('pc-f-field-seal')?.value`);
+  ok(sealSelVal === '福', 'headless 9b: 印章 select value 同步');
 
   // ── 冒烟:← 抽卡 关闭贺卡屏(直接调 hide,绕过 confirm 异步边界) ──
   // 先做下载清 dirty,然后直接隐藏贺卡屏 / 恢复抽卡屏
