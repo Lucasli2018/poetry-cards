@@ -165,6 +165,7 @@ export function mountFestivalUI(storage, els) {
             </div>
             ${state.recipient ? `<p class="postcard-gift">送给 ${escapeHtml(state.recipient)}</p>` : ''}
             ${state.message ? `<p class="postcard-message">${escapeHtml(state.message)}</p>` : ''}
+            ${state.sender ? `<p class="postcard-sender">— ${escapeHtml(state.sender)} 敬上</p>` : ''}
             <p class="postcard-foot">古韵抽卡 · 一图一诗</p>
             <span class="postcard-seal" aria-label="印章">${escapeHtml(state.sealText)}</span>
           </div>
@@ -220,6 +221,7 @@ export function mountFestivalUI(storage, els) {
     draftStore.save(stripForSave(state));
     // 局部更新预览(避免每次 input 都全量 render)
     if (key === 'recipient') updatePreviewRecipient(value);
+    else if (key === 'sender') updatePreviewSender(value);
     else if (key === 'message') updatePreviewMessage(value);
     else if (key === 'sealText') updatePreviewSeal(value);
   }
@@ -236,6 +238,22 @@ export function mountFestivalUI(storage, els) {
         (msg || card.querySelector('.postcard-content')).insertAdjacentElement('afterend', node);
       }
       node.textContent = `送给 ${v}`;
+    } else if (node) node.remove();
+  }
+
+  // v4.1.2: 落款(sender)在卡片预览中显式渲染
+  function updatePreviewSender(v) {
+    const card = document.querySelector('.postcard-body');
+    if (!card) return;
+    let node = card.querySelector('.postcard-sender');
+    if (v) {
+      if (!node) {
+        node = document.createElement('p');
+        node.className = 'postcard-sender';
+        const foot = card.querySelector('.postcard-foot');
+        (foot || card).insertAdjacentElement('beforebegin', node);
+      }
+      node.textContent = `— ${v} 敬上`;
     } else if (node) node.remove();
   }
 

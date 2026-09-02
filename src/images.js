@@ -171,7 +171,7 @@ export const SCENE_IMG_H = 450;
 // 图片加载:总超时缩短到 4s(原 8s),失败快速降级到 LoremFlickr / Picsum / 渐变
 //   减少「点击换一张 → 长时间等待」的体感
 const IMG_TIMEOUT_MS = 4000;
-const AI_TIMEOUT_MS = 3500;   // Pollinations AI 慢,单独给 3.5s
+const AI_TIMEOUT_MS = 6000;   // v4.1.2: Pollinations 实际生成图 3-5s, 3.5s 太短 → 6s
 
 /**
  * 加载一张可用于 Canvas 导出的图片。
@@ -227,18 +227,17 @@ function picsumUrl(opts = {}) {
 
 /**
  * 为一首诗取一张配图。多源依次尝试，任一成功即返回。
- * 顺序：Pollinations(3s) → Picsum(3s) — 总预算 5.5s 内必出图
+ * 顺序：Pollinations(6s) → Picsum(3s) — 总预算 10s 内必出图
  * @param {object} poem
  * @param {{width?:number, height?:number, seed?:number, totalBudgetMs?:number}} opts
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  // v4.0.3:直连 API + 极简兜底 — Pollinations AI (3s) → Picsum 兜底
-  //   - 移除 LoremFlickr(测试中 Picsum 一样稳定但更快出)
-  //   - 短总预算,保证 5s 内必出图或 null
-  const totalBudget = Math.max(2000, opts.totalBudgetMs || 5500);
+  // v4.1.2: 调宽总预算 — Pollinations 实测 3-5s 出图, 旧 5.5s 总预算 + 3.5s 单源 timeout 太短
+  //   单源 AI 提到 6s, 总预算 10s, 保证常规网络 90%+ 命中
+  const totalBudget = Math.max(4000, opts.totalBudgetMs || 10000);
   const t0 = Date.now();
-  const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
+  const remain = () => Math.max(1000, totalBudget - (Date.now() - t0));
 
   // ① Pollinations AI(按诗意生成,最贴合)
   const aiUrl = pollinationsUrl(poem, opts);

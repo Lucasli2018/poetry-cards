@@ -119,6 +119,7 @@ export function _resolveOptions(options) {
     sealChar: (hasOptions && o.sealText) ? String(o.sealText) : '诗',
     recipient: (hasOptions && o.recipient) ? String(o.recipient) : '',
     message: (hasOptions && o.message) ? String(o.message) : '',
+    sender:   (hasOptions && o.sender)   ? String(o.sender)   : '',   // v4.1.2: 落款
   };
 }
 
@@ -282,6 +283,15 @@ export function composeCard(poem, bgImg, hostEl, options = {}) {
   ctx.font = `400 ${footPx}px ${FONT_SANS}`;
   ctx.textAlign = 'left';
   ctx.fillText('古韵抽卡 · 一图一诗', padX, footY);
+
+  // v4.1.2: 落款(敬上)— 在页脚上方右侧对齐
+  if (opt.hasOptions && opt.sender) {
+    const senderPx = Math.max(13, Math.round(FONT_W * 0.024));
+    ctx.fillStyle = C.sub;
+    ctx.font = `italic 400 ${senderPx}px ${FONT_SERIF}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`— ${opt.sender} 敬上`, CARD_W - padX, footY - Math.round(senderPx * 2.4));
+  }
 
   const sealSize = Math.max(36, Math.round(FONT_W * 0.048));
   drawSeal(ctx, CARD_W - padX - sealSize, footY - sealSize + Math.round(footPx * 0.5), sealSize, opt.sealChar);

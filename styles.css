@@ -1057,6 +1057,17 @@ body {
   font-family: var(--font-serif, 'Songti SC','STSong',serif);
   margin: 6px 0 0;
 }
+/* v4.1.2: 落款(敬上) */
+.postcard-sender {
+  text-align: right;
+  color: var(--sub);
+  font-size: 13px;
+  font-style: italic;
+  font-family: var(--font-serif, 'Songti SC','STSong',serif);
+  margin: 14px 0 0;
+  padding-right: 8px;
+  letter-spacing: 0.1em;
+}
 
 /* 自定义字段区 */
 .pc-festival-fields {

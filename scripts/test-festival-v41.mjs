@@ -70,24 +70,7 @@ try {
   ok(onFestival, 'v4.1-2: 点击 🎴 跳转到 festival.html');
 
   // festival.html 应该自动渲染
-  await new Promise(r => setTimeout(r, 2500));  // 等 ESM 模块加载
-  // 详细查 console + console.error
-  await send('Runtime.enable', {});
-  const consoleMsgs = await evaluate(`(() => {
-    // 让 Runtime.consoleAPICalled 事件传到 events 数组 — 我们用 console.log 触发
-    return { scripts: Array.from(document.scripts).map(s => s.src) };
-  })()`);
-  console.log('[debug] scripts:', JSON.stringify(consoleMsgs));
-  const debugInfo = await evaluate(`(() => ({
-    title: document.getElementById('pc-festival-title')?.textContent,
-    fieldsHTML: document.getElementById('pc-festival-fields')?.innerHTML?.slice(0, 200),
-    selectsHTML: document.getElementById('pc-festival-selects-wrap')?.innerHTML?.slice(0, 200),
-    cardHTML: document.getElementById('pc-festival-card')?.innerHTML?.slice(0, 200),
-    actionsHTML: document.getElementById('pc-festival-actions')?.innerHTML?.slice(0, 200),
-  }))()`);
-  console.log('[debug] festival.html DOM:', JSON.stringify(debugInfo, null, 2));
-  const consErrs = events.filter(e => e.method === 'Runtime.exceptionThrown');
-  console.log('[debug] console errors full:', JSON.stringify(consErrs, null, 2));
+  await new Promise(r => setTimeout(r, 5000));  // v4.1.2: 等 ESM + loadImage(6s Pollinations timeout)
   const titleEl = await evaluate(`document.getElementById('pc-festival-title')?.textContent`);
   ok(titleEl && titleEl.includes('贺卡'), `v4.1-2b: 标题渲染 (${titleEl})`);
 
@@ -152,8 +135,46 @@ try {
 
   // 草稿已存到 localStorage
   const draft = await evaluate(`localStorage.getItem('pc_v3_festival_draft')`);
-  console.log('[debug] draft:', draft?.slice(0, 300));
   ok(draft && draft.includes('小王'), 'v4.1-3d: 草稿已自动保存(含小王)');
+
+  // v4.1.2-A: 落款(sender)输入后应出现 .postcard-sender 节点
+  await evaluate(`(() => {
+    const s = document.getElementById('pc-f-field-sender');
+    s.value = '老友张';
+    s.dispatchEvent(new Event('input', { bubbles: true }));
+  })()`);
+  await new Promise(r => setTimeout(r, 400));
+  const senderNode = await evaluate(`(() => {
+    const n = document.querySelector('.postcard-sender');
+    return n ? n.textContent : null;
+  })()`);
+  ok(senderNode && senderNode.includes('老友张') && senderNode.includes('敬上'),
+     `v4.1.2-A: 落款显示在卡片预览 (${senderNode})`);
+
+  // v4.1.2-B: 诗仍正常渲染
+  const titleText = await evaluate(`document.querySelector('.postcard-title')?.textContent || null`);
+  ok(titleText && /《.+》/.test(titleText), `v4.1.2-B: 诗词标题渲染 (${titleText})`);
+  const contentText = await evaluate(`document.querySelector('.postcard-content')?.textContent?.trim() || null`);
+  ok(contentText && contentText.length > 8, `v4.1.2-C: 诗词内容渲染 (${contentText?.slice(0, 30)}...)`);
+
+  // v4.1.2-D: 图片加载状态 — 12s 内必出图或显式错误
+  let imageStatus = 'unknown';
+  for (let i = 0; i < 24; i++) {
+    imageStatus = await evaluate(`(() => {
+      const media = document.querySelector('.postcard-media');
+      if (!media) return 'no-media';
+      const img = media.querySelector('img');
+      if (img && img.src && img.complete && img.naturalWidth > 0) return 'loaded:' + (img.src.includes('pollinations') ? 'Pollinations' : img.src.includes('picsum') ? 'Picsum' : 'other');
+      const fb = media.querySelector('.postcard-media-fallback');
+      if (fb?.classList.contains('postcard-media-fallback--error')) return 'error-fallback';
+      if (fb?.classList.contains('postcard-media-fallback--loading')) return 'loading';
+      return 'idle';
+    })()`);
+    if (imageStatus.startsWith('loaded:') || imageStatus === 'error-fallback') break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  ok(imageStatus.startsWith('loaded:') || imageStatus === 'error-fallback',
+     `v4.1.2-D: 图片加载状态 (${imageStatus})`);
 
   // ── 4. ← 抽卡 返回主页(dirty 提示 confirm 必须覆盖) ──
   await evaluate(`window.confirm = () => true`);  // 接受"确定离开"
