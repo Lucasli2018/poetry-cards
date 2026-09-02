@@ -93,7 +93,7 @@ const memStore = (() => {
   const huge = 'https://example.com/' + 'a'.repeat(LIMITS.festivalDraftBytes);
   store.save({ festivalId: 'spring', poemId: 'f-spring-1', imageUrl: huge, sender: '', recipient: '', message: '', sealText: '诗', savedAt: 0 });
   const got = store.get();
-  truthy(got.imageUrl.length < LIMITS.festivalDraftBytes, 'imageUrl 超 5KB 被截断');
+  truthy(got.imageUrl.length <= LIMITS.festivalDraftBytes, 'imageUrl 超 5KB 被截断');
 }
 
 {

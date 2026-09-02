@@ -16,8 +16,9 @@ export const SCHEMA_VERSION = 1;
 
 // 各模块的「容量上限」,集中维护,便于文档对齐
 export const LIMITS = Object.freeze({
-  favorites: 200,   // 收藏夹最大条目
-  history:   200,   // 抽卡历史最大条目(滚动队列)
+  favorites: 200,        // 收藏夹最大条目
+  history:   200,        // 抽卡历史最大条目(滚动队列)
+  festivalDraftBytes: 5 * 1024,  // v4.0 贺卡草稿 imageUrl 截断阈值(避免 localStorage 5MB 触顶)
 });
 
 // localStorage 键名(与 v3.0 命名空间一致:pc_v3_ 前缀)
@@ -25,6 +26,7 @@ export const KEY = Object.freeze({
   favorites: 'pc_v3_favorites',
   history:   'pc_v3_history',
   statsMeta: 'pc_v3_stats_meta',
+  festivalDraft: 'pc_v3_festival_draft',  // v4.0 贺卡草稿
 });
 
 // 「出厂默认」:localStorage 中无任何记录时,首次读取返回什么
@@ -38,6 +40,17 @@ export const DEFAULTS = Object.freeze({
     todayKey: '',
     dynastyCounter: {},
     imageryCounter: {},
+  }),
+  festivalDraft: () => ({  // v4.0 贺卡草稿
+    version: SCHEMA_VERSION,
+    festivalId: '',
+    poemId: '',
+    imageUrl: '',
+    sender: '',
+    recipient: '',
+    message: '',
+    sealText: '诗',
+    savedAt: 0,
   }),
 });
 
