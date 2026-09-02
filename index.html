@@ -34,6 +34,8 @@
             <span class="pc-switch-thumb"></span>
           </span>
         </div>
+        <button id="pc-festival-open" class="pc-btn pc-btn--header" type="button"
+                title="贺卡模式 · 节日送礼" aria-label="打开贺卡模式">🎋</button>
         <button id="pc-theme-toggle" class="pc-btn pc-btn--header" type="button" title="切换主题">自动</button>
       </div>
     </header>
@@ -78,6 +80,9 @@
         <span class="pc-kbd-hint">点图右上角 <kbd>↻</kbd> 换图 · 按 <kbd>空格</kbd> 换诗</span>
       </p>
     </main>
+
+    <!-- v4.0 节日贺卡屏(默认隐藏,与 .pc-main 互斥) -->
+    <section id="pc-festival-screen" class="pc-festival-screen" hidden aria-label="节日贺卡"></section>
   </div>
 
   <script type="module" src="./src/main.js"></script>
