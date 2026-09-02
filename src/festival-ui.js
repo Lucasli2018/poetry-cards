@@ -274,11 +274,12 @@ export function mountFestivalUI(storage, els) {
     });
     try {
       await downloadCard(cv, entry.poem, host);
-      state.dirty = false;
     } catch (e) {
       console.error('[festival] download failed', e);
       alert('生成失败,请重试');
     }
+    // 无论成功失败都清 dirty(download 已被触发 → 用户已"产出"草稿)
+    state.dirty = false;
   }
 
   async function onShare() {

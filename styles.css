@@ -911,3 +911,179 @@ body {
     transition-duration: .01ms !important;
   }
 }
+
+/* =============================================================
+   v4.0 · 节日贺卡屏
+   沿用明信片版式(.postcard) + 朱砂强调色 + 米白纸
+   ============================================================= */
+.pc-festival-screen {
+  display: block;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 20px 32px;
+  color: var(--ink);
+}
+
+.pc-festival-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 16px;
+}
+.pc-festival-title {
+  font-family: var(--font-serif, 'Songti SC','STSong','SimSun',serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.pc-btn--ghost {
+  background: transparent;
+  color: var(--sub);
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  transition: background .15s ease;
+}
+.pc-btn--ghost:hover { background: rgba(0, 0, 0, 0.04); }
+.pc-dark .pc-btn--ghost:hover { background: rgba(255, 255, 255, 0.08); }
+
+.pc-festival-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 16px;
+}
+.pc-festival-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.pc-festival-chip:hover {
+  border-color: var(--vermil);
+}
+.pc-festival-chip.is-current {
+  background: var(--vermil);
+  color: #fff7e6;
+  border-color: var(--vermil);
+}
+.pc-festival-chip-icon { font-size: 14px; }
+.pc-festival-chip-dot {
+  display: inline-block;
+  background: #fff;
+  color: var(--vermil);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  margin-left: 4px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.pc-festival-chip.is-current .pc-festival-chip-dot {
+  background: var(--vermil);
+  color: #fff7e6;
+  border: 1px solid #fff7e6;
+}
+
+.pc-festival-card {
+  margin: 8px 0 16px;
+}
+
+/* 复用 .postcard 已有样式,此处只补增量字段 */
+.postcard-gift {
+  text-align: center;
+  color: var(--sub);
+  font-size: 14px;
+  margin: 12px 0 0;
+  font-family: var(--font-sans, 'PingFang SC','Hiragino Sans GB',sans-serif);
+}
+.postcard-message {
+  text-align: center;
+  color: var(--vermil);
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-serif, 'Songti SC','STSong',serif);
+  margin: 6px 0 0;
+}
+
+/* 自定义字段区 */
+.pc-festival-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.pc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--sub);
+}
+.pc-field--wide { grid-column: 1 / -1; }
+.pc-field-label { font-weight: 600; letter-spacing: 0.02em; }
+.pc-field input,
+.pc-field select {
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s ease;
+}
+.pc-field input:focus,
+.pc-field select:focus {
+  border-color: var(--vermil);
+}
+
+.pc-festival-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px 0 24px;
+}
+
+.pc-festival-empty {
+  text-align: center;
+  padding: 64px 16px;
+  color: var(--sub);
+  font-size: 14px;
+}
+
+/* 暗色适配 */
+.pc-dark .pc-festival-chip {
+  background: var(--card);
+  color: var(--ink);
+}
+.pc-dark .pc-field input,
+.pc-dark .pc-field select {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* 移动端 */
+@media (max-width: 600px) {
+  .pc-festival-fields { grid-template-columns: 1fr; }
+  .pc-festival-actions { flex-wrap: wrap; }
+  .pc-festival-actions .pc-btn { flex: 1 1 calc(50% - 4px); }
+}
