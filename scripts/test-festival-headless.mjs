@@ -168,7 +168,7 @@ try {
   ok(curChip === 'spring', `headless 4: 默认选中「春节」(实际 ${curChip})`);
 
   // ── 冒烟:贺卡屏有诗题 + 元日 ──
-  const titleText = await evaluate(`document.querySelector('.postcard-title')?.textContent`);
+  const titleText = await evaluate(`document.querySelector('.pc-festival-screen .postcard-title')?.textContent`);
   ok(titleText && titleText.includes('元日'), `headless 5: 默认诗《元日》(实际 ${titleText})`);
 
   // 清掉任何旧草稿(防止 headless 重启状态污染)
@@ -182,10 +182,10 @@ try {
   ok(curChip2 === 'midautumn', 'headless 6: 切换到「中秋」生效');
 
   // ── 冒烟:换一首 ──
-  const titleBefore = await evaluate(`document.querySelector('.postcard-title')?.textContent`);
+  const titleBefore = await evaluate(`document.querySelector('.pc-festival-screen .postcard-title')?.textContent`);
   await evaluate(`document.getElementById('pc-f-btn-next').click()`);
   await new Promise(r => setTimeout(r, 500));
-  const titleAfter = await evaluate(`document.querySelector('.postcard-title')?.textContent`);
+  const titleAfter = await evaluate(`document.querySelector('.pc-festival-screen .postcard-title')?.textContent`);
   ok(titleBefore !== titleAfter, `headless 7: 换一首: ${titleBefore} → ${titleAfter}`);
 
   // ── 冒烟:输入字段绑定 ──
@@ -198,16 +198,17 @@ try {
   const giftText = await evaluate(`document.querySelector('.postcard-gift')?.textContent`);
   ok(giftText && giftText.includes('小王'), `headless 8: 送给字段绑定 (实际 ${giftText})`);
 
-  // ── 冒烟:印章切换(用 React 风格的 native setter 触发 change 事件) ──
+  // ── 冒烟:印章切换(v4.0.2 印章是 .pc-seal-chip 按钮,radiogroup) ──
   await evaluate(`
-    const s = document.getElementById('pc-f-field-seal');
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
-    setter.call(s, '福');
-    s.dispatchEvent(new Event('change', { bubbles: true }));
+    const chip = document.querySelector('.pc-festival-screen .pc-seal-chip[data-seal="福"]');
+    chip.click();
   `);
-  await new Promise(r => setTimeout(r, 200));
-  const sealText = await evaluate(`document.querySelector('.postcard-seal')?.textContent`);
+  await new Promise(r => setTimeout(r, 300));
+  const sealText = await evaluate(`document.querySelector('.pc-festival-screen .postcard-seal')?.textContent`);
   ok(sealText === '福', `headless 9: 印章切换为「福」(实际 ${sealText})`);
+  // 验证选中态视觉
+  const isCur = await evaluate(`document.querySelector('.pc-festival-screen .pc-seal-chip[data-seal="福"]')?.classList.contains('is-current')`);
+  ok(isCur, 'headless 9b: 印章「福」视觉选中态');
 
   // ── 冒烟:← 抽卡 关闭贺卡屏(直接调 hide,绕过 confirm 异步边界) ──
   // 先做下载清 dirty,然后直接隐藏贺卡屏 / 恢复抽卡屏

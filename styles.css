@@ -1126,3 +1126,303 @@ body {
   .pc-festival-actions { flex-wrap: wrap; }
   .pc-festival-actions .pc-btn { flex: 1 1 calc(50% - 4px); }
 }
+
+/* ============================================================
+ *  v4.0.2 贺卡屏 UI 重排
+ *  ① 字段区置顶(收信人/落款/寄语/印章)
+ *  ② 预览(明信片)居中
+ *  ③ 节日胶囊 + 操作按钮全部沉底
+ *  ④ 印章:8 颗 button chip(radiogroup)
+ *  ⑤ 选中态:印泥朱砂填充 + 描金边
+ *  ⑥ toast 屏内轻提示
+ * ============================================================ */
+
+/* 整体屏:营造"信匣"氛围 */
+.pc-festival-screen {
+  background:
+    radial-gradient(circle at top right, rgba(180, 138, 58, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at bottom left, rgba(168, 50, 30, 0.05) 0%, transparent 55%),
+    var(--bg);
+  min-height: 100vh;
+}
+
+/* 字段区(置顶):做成"信头" */
+.pc-festival-screen .pc-festival-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-top: 3px double var(--vermil);
+  border-radius: 6px;
+  margin: 0 0 18px;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(46, 43, 39, 0.04);
+}
+.pc-festival-screen .pc-festival-fields::before {
+  content: "敬启者";
+  position: absolute;
+  top: -10px;
+  right: 18px;
+  background: var(--card);
+  color: var(--vermil);
+  font-size: 11px;
+  letter-spacing: 0.4em;
+  padding: 0 8px;
+  font-family: var(--font-serif, 'Songti SC', serif);
+}
+.pc-festival-screen .pc-festival-fields-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pc-festival-screen .pc-field-label {
+  font-family: var(--font-serif, 'Songti SC', serif);
+  color: var(--vermil);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+.pc-festival-screen .pc-field input {
+  background: var(--bg);
+  border: 1px solid transparent;
+  border-bottom: 1px dashed var(--line-strong);
+  border-radius: 0;
+  padding: 8px 4px;
+  font-family: var(--font-serif, 'Songti SC', serif);
+  font-size: 15px;
+  transition: border-color .2s ease, background .2s ease;
+}
+.pc-festival-screen .pc-field input:focus {
+  border-bottom-color: var(--vermil);
+  background: rgba(168, 50, 30, 0.03);
+}
+
+/* 印章 chip 网格:8 颗,选中态朱砂+描金 */
+.pc-festival-screen .pc-field--seals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pc-seal-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+.pc-seal-chip {
+  aspect-ratio: 1 / 1;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'STZhongsong', 'Songti SC', 'KaiTi', cursive;
+  font-size: 18px;
+  color: var(--ink);
+  padding: 0;
+  transition: all .15s ease;
+  position: relative;
+}
+.pc-seal-chip:hover {
+  border-color: var(--vermil);
+  color: var(--vermil);
+  transform: translateY(-1px);
+}
+.pc-seal-chip.is-current {
+  background: var(--vermil);
+  color: #fff7e6;
+  border-color: var(--gold);
+  box-shadow:
+    inset 0 0 0 1px var(--gold),
+    0 1px 0 rgba(180, 138, 58, 0.4),
+    0 2px 4px rgba(168, 50, 30, 0.25);
+  transform: translateY(0);
+  font-weight: 600;
+}
+.pc-seal-chip.is-current::after {
+  content: "";
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 5px; height: 5px;
+  background: var(--gold);
+  border-radius: 50%;
+  opacity: 0.7;
+}
+
+/* 预览(明信片)居中 */
+.pc-festival-screen .pc-festival-card {
+  margin: 0 0 20px;
+}
+
+/* 节日胶囊区:沉底 + "节令"小字标签 */
+.pc-festival-screen .pc-festival-chips {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  margin: 0 0 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.pc-festival-screen .pc-festival-chips-label {
+  font-family: var(--font-serif, 'Songti SC', serif);
+  font-size: 13px;
+  color: var(--vermil);
+  letter-spacing: 0.2em;
+  flex-shrink: 0;
+  padding-right: 10px;
+  border-right: 1px solid var(--line-strong);
+}
+.pc-festival-screen .pc-festival-chips-row {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+.pc-festival-screen .pc-festival-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  background: var(--bg);
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  font-family: var(--font-serif, 'Songti SC', serif);
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all .2s ease;
+  position: relative;
+}
+.pc-festival-screen .pc-festival-chip:hover {
+  border-color: var(--vermil);
+  color: var(--vermil);
+  transform: translateY(-1px);
+}
+.pc-festival-screen .pc-festival-chip.is-current {
+  background: var(--vermil);
+  color: #fff7e6;
+  border-color: var(--gold);
+  font-weight: 600;
+  box-shadow:
+    inset 0 0 0 1px var(--gold),
+    0 2px 6px rgba(168, 50, 30, 0.3);
+  transform: translateY(-1px);
+}
+.pc-festival-screen .pc-festival-chip.is-current::before {
+  content: "✓";
+  display: inline-block;
+  font-size: 11px;
+  margin-right: 2px;
+  color: var(--gold);
+  font-weight: 700;
+}
+.pc-festival-screen .pc-festival-chip-icon {
+  font-size: 15px;
+}
+.pc-festival-screen .pc-festival-chip-dot {
+  display: inline-block;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+/* 底部操作按钮:全宽 + 沉底 */
+.pc-festival-screen .pc-festival-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 8px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  box-shadow: 0 -2px 12px rgba(46, 43, 39, 0.06);
+}
+.pc-festival-screen .pc-festival-actions .pc-btn {
+  font-family: var(--font-serif, 'Songti SC', serif);
+  font-size: 14px;
+  letter-spacing: 0.05em;
+}
+
+/* 加载失败兜底视觉 */
+.postcard-media-fallback--error {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(168, 50, 30, 0.06) 0,
+      rgba(168, 50, 30, 0.06) 8px,
+      transparent 8px,
+      transparent 16px
+    );
+  color: var(--vermil);
+}
+.postcard-media-fallback--error .postcard-media-fallback-icon {
+  animation: none;
+  opacity: 0.7;
+}
+
+/* 屏内 toast */
+.pc-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--ink);
+  color: #fff7e6;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-family: var(--font-serif, 'Songti SC', serif);
+  font-size: 14px;
+  letter-spacing: 0.05em;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  max-width: 80vw;
+  text-align: center;
+}
+.pc-toast.is-show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.pc-toast--success { background: #2d5a3d; }
+.pc-toast--error   { background: var(--vermil); }
+.pc-dark .pc-toast { background: var(--card); color: var(--ink); border: 1px solid var(--vermil); }
+
+/* 暗色适配 v4.0.2 */
+.pc-dark .pc-festival-screen .pc-festival-fields,
+.pc-dark .pc-festival-screen .pc-festival-chips,
+.pc-dark .pc-festival-screen .pc-festival-actions {
+  background: var(--card);
+  border-color: var(--line-strong);
+}
+.pc-dark .pc-seal-chip {
+  background: var(--bg);
+  color: var(--ink);
+}
+.pc-dark .pc-seal-chip.is-current {
+  color: #fff7e6;
+}
+
+/* 移动端:8 颗印章变 4 列 */
+@media (max-width: 600px) {
+  .pc-festival-screen .pc-festival-fields-row { grid-template-columns: 1fr; }
+  .pc-seal-grid { grid-template-columns: repeat(4, 1fr); }
+  .pc-festival-screen .pc-festival-actions { grid-template-columns: 1fr 1fr; }
+  .pc-festival-screen .pc-festival-actions .pc-btn:nth-child(1) { grid-column: 1 / -1; }
+}

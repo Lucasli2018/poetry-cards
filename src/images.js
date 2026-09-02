@@ -233,19 +233,24 @@ function picsumUrl(opts = {}) {
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  // ① Pollinations AI：按诗意生成，最贴合
+  // v4.0.2:总预算控制,避免 3 源串行超 10s
+  const totalBudget = Math.max(2000, opts.totalBudgetMs || 8000);
+  const t0 = Date.now();
+  const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
+
+  // ① Pollinations AI：按诗意生成，最贴合(快的时候 1.5s)
   const aiUrl = pollinationsUrl(poem, opts);
-  let img = await loadImage(aiUrl, AI_TIMEOUT_MS);
+  let img = await loadImage(aiUrl, Math.min(AI_TIMEOUT_MS, remain()));
   if (img) return { img, url: aiUrl, source: 'Pollinations' };
 
   // ② LoremFlickr：风景关键词兜底
   const flickrUrl = loremFlickrUrl(poem, opts);
-  img = await loadImage(flickrUrl, IMG_TIMEOUT_MS);
+  img = await loadImage(flickrUrl, Math.min(IMG_TIMEOUT_MS, remain()));
   if (img) return { img, url: flickrUrl, source: 'LoremFlickr' };
 
-  // ③ Picsum：稳定随机兜底
+  // ③ Picsum：稳定随机兜底(几乎秒出)
   const pUrl = picsumUrl(opts);
-  img = await loadImage(pUrl, 6000);
+  img = await loadImage(pUrl, Math.min(5000, remain()));
   if (img) return { img, url: pUrl, source: 'Picsum' };
 
   // ④ 都失败：返回 null，由调用方用 CSS 渐变兜底

@@ -24,6 +24,37 @@ const FIELD_LIMITS = { sender: 12, recipient: 12, message: 30 };
 const FALLBACK_LOADING_HTML = '<div class="postcard-media-fallback postcard-media-fallback--loading" role="status" aria-label="意境加载中"><span class="postcard-media-fallback-icon" aria-hidden="true">🎐</span><span class="postcard-media-fallback-text">意境加载中</span></div>';
 const FALLBACK_DONE_HTML    = '<div class="postcard-media-fallback" role="img" aria-label="水墨意境"><span class="postcard-media-fallback-icon" aria-hidden="true">🏔</span><span class="postcard-media-fallback-text">水墨意境</span></div>';
 
+// 浏览器原生通知(用户首次下载时按需请求授权)
+let _notifyPermissionAsked = false;
+function trySysNotify(title, body) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    try { new Notification(title, { body, icon: '/favicon.ico' }); } catch {}
+  } else if (!_notifyPermissionAsked && Notification.permission !== 'denied') {
+    _notifyPermissionAsked = true;
+    Notification.requestPermission().then((p) => {
+      if (p === 'granted') try { new Notification(title, { body, icon: '/favicon.ico' }); } catch {}
+    });
+  }
+}
+
+// 屏内 toast(轻量、不打断)
+let _toastTimer = null;
+function showToast(message, kind = 'info') {
+  let host = document.getElementById('pc-toast-host');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'pc-toast-host';
+    host.setAttribute('role', 'status');
+    host.setAttribute('aria-live', 'polite');
+    document.body.appendChild(host);
+  }
+  host.textContent = message;
+  host.className = `pc-toast pc-toast--${kind} is-show`;
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { host.classList.remove('is-show'); }, 2400);
+}
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -78,9 +109,9 @@ export function mountFestivalUI(storage, els) {
         <button type="button" class="pc-festival-chip${cur ? ' is-current' : ''}"
                 data-festival-id="${escapeHtml(f.id)}"
                 aria-pressed="${cur}">
-          <span class="pc-festival-chip-icon">${escapeHtml(f.icon)}</span>
+          <span class="pc-festival-chip-icon" aria-hidden="true">${escapeHtml(f.icon)}</span>
           <span class="pc-festival-chip-name">${escapeHtml(f.name)}</span>
-          ${isToday ? '<span class="pc-festival-chip-dot" title="今天">今天</span>' : ''}
+          ${isToday ? '<span class="pc-festival-chip-dot" title="今日" aria-label="今日">·今</span>' : ''}
         </button>`;
     }).join('');
 
@@ -91,12 +122,35 @@ export function mountFestivalUI(storage, els) {
     screen.innerHTML = `
       <header class="pc-festival-header">
         <button id="pc-festival-back" class="pc-btn pc-btn--ghost" type="button">← 抽卡</button>
-        <h2 class="pc-festival-title">贺卡模式 🎴</h2>
+        <h2 class="pc-festival-title">贺卡 · ${escapeHtml(festival.name)}</h2>
       </header>
 
-      <div class="pc-festival-chips" role="group" aria-label="节日选择">
-        ${chipsHtml}
-      </div>
+      <section class="pc-festival-fields" aria-label="自定义字段(置顶区)">
+        <div class="pc-festival-fields-row">
+          <label class="pc-field">
+            <span class="pc-field-label">收信人</span>
+            <input id="pc-f-field-recipient" type="text" maxlength="${FIELD_LIMITS.recipient}" value="${escapeHtml(state.recipient)}" placeholder="小王">
+          </label>
+          <label class="pc-field">
+            <span class="pc-field-label">落款</span>
+            <input id="pc-f-field-sender" type="text" maxlength="${FIELD_LIMITS.sender}" value="${escapeHtml(state.sender)}" placeholder="老友 XXX">
+          </label>
+        </div>
+        <label class="pc-field pc-field--wide">
+          <span class="pc-field-label">寄语</span>
+          <input id="pc-f-field-message" type="text" maxlength="${FIELD_LIMITS.message}" value="${escapeHtml(state.message)}" placeholder="${escapeHtml(festival.greeting || '')}">
+        </label>
+        <div class="pc-field pc-field--seals" role="radiogroup" aria-label="印章选择">
+          <span class="pc-field-label">印章</span>
+          <div class="pc-seal-grid">
+            ${SEAL_OPTIONS.map(s => `
+              <button type="button" class="pc-seal-chip${s === state.sealText ? ' is-current' : ''}" role="radio" aria-checked="${s === state.sealText}" data-seal="${s}">
+                <span class="pc-seal-chip-text">${s}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </section>
 
       <section class="pc-festival-card" aria-label="明信片预览">
         <div class="postcard">
@@ -116,29 +170,13 @@ export function mountFestivalUI(storage, els) {
         </div>
       </section>
 
-      <section class="pc-festival-fields" aria-label="自定义字段">
-        <label class="pc-field">
-          <span class="pc-field-label">送给</span>
-          <input id="pc-f-field-recipient" type="text" maxlength="${FIELD_LIMITS.recipient}" value="${escapeHtml(state.recipient)}" placeholder="小王">
-        </label>
-        <label class="pc-field">
-          <span class="pc-field-label">落款</span>
-          <input id="pc-f-field-sender" type="text" maxlength="${FIELD_LIMITS.sender}" value="${escapeHtml(state.sender)}" placeholder="老友 XXX">
-        </label>
-        <label class="pc-field pc-field--wide">
-          <span class="pc-field-label">寄语</span>
-          <input id="pc-f-field-message" type="text" maxlength="${FIELD_LIMITS.message}" value="${escapeHtml(state.message)}" placeholder="${escapeHtml(festival.greeting || '')}">
-        </label>
-        <label class="pc-field">
-          <span class="pc-field-label">印章</span>
-          <select id="pc-f-field-seal">
-            ${SEAL_OPTIONS.map(s => `<option value="${s}"${s === state.sealText ? ' selected' : ''}>${s}</option>`).join('')}
-          </select>
-        </label>
-      </section>
+      <div class="pc-festival-chips" role="group" aria-label="节日选择">
+        <span class="pc-festival-chips-label">节令</span>
+        <div class="pc-festival-chips-row">${chipsHtml}</div>
+      </div>
 
       <div class="pc-festival-actions">
-        <button id="pc-f-btn-next" class="pc-btn" type="button">换一首</button>
+        <button id="pc-f-btn-next" class="pc-btn" type="button">换一首 ↻</button>
         <button id="pc-f-btn-download" class="pc-btn pc-btn--primary" type="button">下载 PNG</button>
         <button id="pc-f-btn-share" class="pc-btn" type="button">分享</button>
       </div>
@@ -159,12 +197,26 @@ export function mountFestivalUI(storage, els) {
     const recipient = els.festivalScreen.querySelector('#pc-f-field-recipient');
     const sender = els.festivalScreen.querySelector('#pc-f-field-sender');
     const message = els.festivalScreen.querySelector('#pc-f-field-message');
-    const seal = els.festivalScreen.querySelector('#pc-f-field-seal');
 
     recipient?.addEventListener('input', () => updateField('recipient', recipient.value));
     sender?.addEventListener('input', () => updateField('sender', sender.value));
     message?.addEventListener('input', () => updateField('message', message.value));
-    seal?.addEventListener('change', () => updateField('sealText', seal.value));
+
+    // 印章选择:8 颗 button,radiogroup
+    els.festivalScreen.querySelectorAll('.pc-seal-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const seal = btn.dataset.seal;
+        updateField('sealText', seal);
+        // 局部更新选中态,避免整屏 render 闪动
+        els.festivalScreen.querySelectorAll('.pc-seal-chip').forEach(b => {
+          const on = b.dataset.seal === seal;
+          b.classList.toggle('is-current', on);
+          b.setAttribute('aria-checked', on ? 'true' : 'false');
+        });
+        const sealEl = els.festivalScreen.querySelector('.postcard-seal');
+        if (sealEl) sealEl.textContent = seal;
+      });
+    });
   }
 
   // ── 行为 ──
@@ -249,12 +301,19 @@ export function mountFestivalUI(storage, els) {
       ...entry.poem,
       imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
     };
-    const r = await fetchSceneImage(poemWithKeywords);
+    // v4.0.2:在线直接请求 — 多源轮询 + 短超时,保证 8s 内必出图
+    const r = await fetchSceneImage(poemWithKeywords, { totalBudgetMs: 8000 });
     if (r && r.img) {
       state.bgImg = r.img;
       state.imageUrl = r.url || '';
       draftStore.save(stripForSave(state));
       updatePreviewImage();
+    } else {
+      // 三源全失败 —— 给用户明确提示,而不是永远 loading
+      const media = els.festivalScreen.querySelector('.postcard-media');
+      if (media) {
+        media.innerHTML = '<div class="postcard-media-fallback postcard-media-fallback--error" role="img" aria-label="意境获取失败"><span class="postcard-media-fallback-icon" aria-hidden="true">⛅</span><span class="postcard-media-fallback-text">意境暂不可达,稍后重试</span></div>';
+      }
     }
   }
 
@@ -280,13 +339,14 @@ export function mountFestivalUI(storage, els) {
       message: state.message, sealText: state.sealText,
     });
     try {
-      await downloadCard(cv, entry.poem, host);
+      const name = await downloadCard(cv, entry.poem, host);
+      state.dirty = false;
+      showToast(`已保存为 ${name}`, 'success');
+      trySysNotify('贺卡已生成', name);
     } catch (e) {
       console.error('[festival] download failed', e);
-      alert('生成失败,请重试');
+      showToast('生成失败,请重试', 'error');
     }
-    // 无论成功失败都清 dirty(download 已被触发 → 用户已"产出"草稿)
-    state.dirty = false;
   }
 
   async function onShare() {
@@ -297,7 +357,12 @@ export function mountFestivalUI(storage, els) {
       sender: state.sender, recipient: state.recipient,
       message: state.message, sealText: state.sealText,
     });
-    await shareCard(cv, entry.poem);
+    try {
+      await shareCard(cv, entry.poem);
+      showToast('已复制到剪贴板', 'success');
+    } catch (e) {
+      showToast('分享失败,请改用下载', 'error');
+    }
   }
 
   function onBack() {
