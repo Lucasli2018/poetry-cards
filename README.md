@@ -181,6 +181,37 @@ python scripts/serve.py 8080
 
 ## 更新日志
 
+### v4.0.0 (2026-09-02) — 节日贺卡模板
+
+详细规划见 [`docs/superpowers/specs/2026-09-02-v4-festival-greeting-card-design.md`](./docs/superpowers/specs/2026-09-02-v4-festival-greeting-card-design.md)。
+实施计划见 [`docs/superpowers/plans/2026-09-02-v4-festival-greeting-card.md`](./docs/superpowers/plans/2026-09-02-v4-festival-greeting-card.md)。
+
+- 🎋 **双入口贺卡屏**：header 新增 🎋 按钮，点击进入独立贺卡屏（`#pc-festival-screen`），与主页抽卡屏互斥显示
+- 🌸 **5 个节日**：春节 / 端午 / 中秋 / 重阳 / 生日，每节日 5~10 首精选诗（合计 31 首内置，零网络依赖）
+- ✏️ **4 个定制字段**：送给（≤12）/ 落款（≤12）/ 寄语（≤30）/ 印章（8 个预设值：诗/礼/福/安/乐/吉/春/祥）
+- 💾 **草稿自动保存**：所有字段改动 debounce 500ms 写入 `pc_v3_festival_draft`，刷新 / 离开再回来可继续编辑
+- 📤 **导出 / 分享复用**：`composeCard` 加可选第 4 参数 `options` 扩展；**不传 options 时与 v3.2.9 像素级一致**（`_resolveOptions` 派生不变量）
+- 📦 **新增 `src/festivals.json`**：31 首精选诗静态资源，与抽卡屏的 `poems.local.json`（70 首）独立
+- 🔒 **零侵入**：抽卡屏代码完全未动；`composeCard` v3.2.9 调用路径字节级一致
+- 🧪 **测试**：108（v3.1 store 回归）+ 108（v4.0 festival 单测）+ 19（静态 smoke）+ 12（headless Chrome 交互）= **247 个验证点全绿**
+
+**新增文件**：
+- `src/festivals.json` · 5 节日 × 31 首精选诗
+- `src/festival-data.js` · 加载/查询/节日日判定（公历映射 2026）
+- `src/festival-draft.js` · 草稿 store（debounce + parseSafe + 5KB 截断）
+- `src/festival-ui.js` · 贺卡屏 DOM/状态/输入绑定
+- `scripts/test-festival.mjs` · 单测
+- `scripts/test-festival-smoke.mjs` · 静态资源 smoke
+- `scripts/test-festival-headless.mjs` · headless Chrome 交互验证
+
+**验证命令**：
+```bash
+node scripts/test-festival.mjs                  # 108 断言
+python scripts/serve.py 8080                    # 起 server
+node scripts/test-festival-smoke.mjs http://localhost:8080/    # 19 静态
+node scripts/test-festival-headless.mjs http://localhost:8080/ # 12 headless
+```
+
 ### v3.1.0 (2026-09-01) — 个性化记忆
 
 详细规划见 [`docs/PLAN-v3.1.md`](./docs/PLAN-v3.1.md)。

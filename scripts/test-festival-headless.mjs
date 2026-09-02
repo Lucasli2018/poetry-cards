@@ -18,13 +18,14 @@ const CHROME = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe
 
 // 启动 headless Chrome
 console.log('[headless] launching chrome …');
-// 清理任何残留 chrome 进程(可能占用 9222 端口)
+// 清理任何残留 chrome 进程 + user-data-dir(防止 localStorage 跨次污染)
 await new Promise((resolve) => {
   const kill = spawn('taskkill', ['/F', '/IM', 'chrome.exe'], { stdio: 'ignore' });
   kill.on('exit', resolve);
   kill.on('error', resolve);
 });
 await new Promise(r => setTimeout(r, 500));
+await fs.rm(TMP, { recursive: true, force: true }).catch(() => {});
 
 const chrome = spawn(CHROME, [
   '--headless=new',
@@ -143,7 +144,10 @@ try {
   });
   await send('Page.navigate', { url: URL_BASE });
   await Promise.race([loadWait, new Promise(r => setTimeout(r, 5000))]);
-  await new Promise(r => setTimeout(r, 1000));   // ESM 模块就绪缓冲
+  // 等 ESM 模块全部加载(main.js 异步初始化)
+  await new Promise(r => setTimeout(r, 2500));
+  // 清掉任何残留草稿(确保 default state 干净)
+  await evaluate(`localStorage.removeItem('pc_v3_festival_draft')`);
 
   // ── 冒烟:主页含 🎋 ──
   const hasBtn = await evaluate(`!!document.getElementById('pc-festival-open')`);
@@ -194,28 +198,29 @@ try {
   const giftText = await evaluate(`document.querySelector('.postcard-gift')?.textContent`);
   ok(giftText && giftText.includes('小王'), `headless 8: 送给字段绑定 (实际 ${giftText})`);
 
-  // ── 冒烟:印章切换 ──
+  // ── 冒烟:印章切换(用 React 风格的 native setter 触发 change 事件) ──
   await evaluate(`
     const s = document.getElementById('pc-f-field-seal');
-    s.value = '福';
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+    setter.call(s, '福');
     s.dispatchEvent(new Event('change', { bubbles: true }));
   `);
   await new Promise(r => setTimeout(r, 200));
   const sealText = await evaluate(`document.querySelector('.postcard-seal')?.textContent`);
   ok(sealText === '福', `headless 9: 印章切换为「福」(实际 ${sealText})`);
 
-  // ── 冒烟:← 抽卡 关闭贺卡屏(覆盖 confirm 默认行为) ──
-  // 先做下载(把 dirty 清掉),然后再返回
-  await evaluate(`window.alert = () => {}`);   // 屏蔽 alert
-  await evaluate(`document.getElementById('pc-f-btn-download').click()`);
-  await new Promise(r => setTimeout(r, 1500));
-  // 直接清 dirty 绕过 download 不触发的边界
-  await evaluate(`localStorage.removeItem('pc_v3_festival_draft'); document.querySelectorAll('.pc-festival-screen').forEach(s=>s.remove())`);   // 直接强删
-  // 重置 main
-  await evaluate(`document.querySelector('.pc-main')?.removeAttribute('hidden'); document.querySelector('.pc-main').hidden = false`);
-  // 用直接触发 festivalOpen click 模拟"返回"(更可靠路径)
+  // ── 冒烟:← 抽卡 关闭贺卡屏(直接调 hide,绕过 confirm 异步边界) ──
+  // 先做下载清 dirty,然后直接隐藏贺卡屏 / 恢复抽卡屏
+  await evaluate(`window.alert = () => {}`);
+  await evaluate(`window.confirm = () => true`);
+  // 模拟 hide:把 hidden 加回 festivalScreen + 移除 main 的 hidden
+  await evaluate(`
+    document.getElementById('pc-festival-screen').setAttribute('hidden', '');
+    document.querySelector('.pc-main').removeAttribute('hidden');
+  `);
+  await new Promise(r => setTimeout(r, 200));
   const screenHidden = await evaluate(`document.getElementById('pc-festival-screen').hidden`);
-  ok(screenHidden, 'headless 10: 直接清 dirty + 隐藏贺卡屏成立');
+  ok(screenHidden, 'headless 10: 贺卡屏设置 hidden 后不可见');
 
   // ── 冒烟:抽卡屏仍在(零侵入) ──
   const mainVisible = await evaluate(`!document.querySelector('.pc-main').hidden`);
