@@ -19,21 +19,20 @@
 <body>
   <div class="pc-page pc-festival-app">
     <header class="pc-festival-header">
-      <a href="./index.html" class="pc-btn pc-btn--ghost pc-festival-back" id="pc-festival-back"
+      <a href="./index.html" class="pc-festival-back" id="pc-festival-back"
          title="返回抽卡" aria-label="返回抽卡主页">← 抽卡</a>
       <h1 class="pc-festival-title" id="pc-festival-title">贺卡</h1>
-      <span class="pc-festival-spacer" aria-hidden="true"></span>
     </header>
 
     <main class="pc-festival-main" id="pc-festival-main" aria-label="节日贺卡编辑器">
-      <!-- 字段区(置顶) -->
+      <!-- 节令 + 印章 同行下拉(顶部 — 在 抽卡 按钮下方) -->
+      <section class="pc-festival-selects-wrap" id="pc-festival-selects-wrap" aria-label="节令与印章"></section>
+
+      <!-- 字段区(收信人/落款/寄语) -->
       <section class="pc-festival-fields" id="pc-festival-fields" aria-label="自定义字段"></section>
 
       <!-- 明信片预览 -->
       <section class="pc-festival-card" id="pc-festival-card" aria-label="明信片预览"></section>
-
-      <!-- 节令 + 印章 同行下拉(沉底) -->
-      <section class="pc-festival-selects-wrap" id="pc-festival-selects-wrap" aria-label="节令与印章"></section>
 
       <!-- 操作按钮(沉底,sticky) -->
       <div class="pc-festival-actions" id="pc-festival-actions" aria-label="贺卡操作"></div>

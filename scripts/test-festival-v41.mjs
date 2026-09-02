@@ -90,6 +90,28 @@ try {
   console.log('[debug] console errors full:', JSON.stringify(consErrs, null, 2));
   const titleEl = await evaluate(`document.getElementById('pc-festival-title')?.textContent`);
   ok(titleEl && titleEl.includes('贺卡'), `v4.1-2b: 标题渲染 (${titleEl})`);
+
+  // v4.1.1 新增:返回按钮宽度 ≈ 文字宽度(不撑满)
+  const backMetrics = await evaluate(`(() => {
+    const a = document.getElementById('pc-festival-back');
+    if (!a) return null;
+    const r = a.getBoundingClientRect();
+    return { w: Math.round(r.width), text: a.textContent };
+  })()`);
+  ok(backMetrics && backMetrics.w <= 80, `v4.1.1-A: 抽卡按钮宽度 ≈ 文字 (实际 ${backMetrics?.w}px, 文字 "${backMetrics?.text}")`);
+
+  // v4.1.1 新增:下拉区在字段区"上面"(DOM 顺序 + Y 坐标)
+  const order = await evaluate(`(() => {
+    const s = document.getElementById('pc-festival-selects-wrap');
+    const f = document.getElementById('pc-festival-fields');
+    if (!s || !f) return null;
+    return {
+      sTop: Math.round(s.getBoundingClientRect().top),
+      fTop: Math.round(f.getBoundingClientRect().top),
+      sBeforeF: !!(s.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING),
+    };
+  })()`);
+  ok(order && order.sBeforeF && order.sTop < order.fTop, `v4.1.1-B: 下拉区在字段区上方 (selects top=${order?.sTop}, fields top=${order?.fTop})`);
   const fOpts = await evaluate(`document.querySelectorAll('#pc-f-field-festival option').length`);
   ok(fOpts === 5, `v4.1-2c: 5 个节日选项 (${fOpts})`);
   const sOpts = await evaluate(`document.querySelectorAll('#pc-f-field-seal option').length`);

@@ -1345,10 +1345,27 @@ body {
 .pc-festival-app .pc-festival-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 4px 0 16px;
+  gap: 8px;
+  padding: 4px 0 12px;
   border-bottom: 1px solid var(--line-strong);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+.pc-festival-app .pc-festival-back {
+  /* v4.1.1: 抽卡按钮只包文字, 不撑满 */
+  display: inline-block;
+  font-family: var(--font-serif, 'Songti SC', 'STSong', serif);
+  font-size: 15px;
+  color: var(--sub);
+  text-decoration: none;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1.4;
+  transition: color .15s ease, background .15s ease;
+  flex-shrink: 0;
+}
+.pc-festival-app .pc-festival-back:hover {
+  color: var(--vermil);
+  background: rgba(168, 50, 30, 0.06);
 }
 .pc-festival-app .pc-festival-title {
   flex: 1;
@@ -1358,10 +1375,7 @@ body {
   color: var(--ink);
   margin: 0;
   text-align: center;
-}
-.pc-festival-app .pc-festival-spacer {
-  width: 64px;                  /* 平衡 ← 抽卡 button 宽度, 标题居中 */
-  flex-shrink: 0;
+  /* 标题居中: flex 1 自然居中,无需 spacer */
 }
 .pc-festival-app .pc-festival-main {
   display: flex;
