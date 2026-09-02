@@ -20,6 +20,10 @@ import { fetchSceneImage } from './images.js';
 const SEAL_OPTIONS = ['诗', '礼', '福', '安', '乐', '吉', '春', '祥'];
 const FIELD_LIMITS = { sender: 12, recipient: 12, message: 30 };
 
+// 贺卡图区 fallback(显式视觉,避免用户误以为"图不显示")
+const FALLBACK_LOADING_HTML = '<div class="postcard-media-fallback postcard-media-fallback--loading" role="status" aria-label="意境加载中"><span class="postcard-media-fallback-icon" aria-hidden="true">🎐</span><span class="postcard-media-fallback-text">意境加载中</span></div>';
+const FALLBACK_DONE_HTML    = '<div class="postcard-media-fallback" role="img" aria-label="水墨意境"><span class="postcard-media-fallback-icon" aria-hidden="true">🏔</span><span class="postcard-media-fallback-text">水墨意境</span></div>';
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -82,12 +86,12 @@ export function mountFestivalUI(storage, els) {
 
     const mediaHtml = state.bgImg
       ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`
-      : '<div class="postcard-media-fallback"></div>';
+      : FALLBACK_LOADING_HTML;
 
     screen.innerHTML = `
       <header class="pc-festival-header">
         <button id="pc-festival-back" class="pc-btn pc-btn--ghost" type="button">← 抽卡</button>
-        <h2 class="pc-festival-title">贺卡模式 🎋</h2>
+        <h2 class="pc-festival-title">贺卡模式 🎴</h2>
       </header>
 
       <div class="pc-festival-chips" role="group" aria-label="节日选择">
@@ -144,7 +148,7 @@ export function mountFestivalUI(storage, els) {
   }
 
   function bindEvents(festival, poem) {
-    els.festivalBack?.addEventListener('click', onBack);
+    els.festivalScreen.querySelector('#pc-festival-back')?.addEventListener('click', onBack);
     els.festivalScreen.querySelectorAll('.pc-festival-chip').forEach(btn => {
       btn.addEventListener('click', () => onFestivalChange(btn.dataset.festivalId));
     });
@@ -258,9 +262,12 @@ export function mountFestivalUI(storage, els) {
     const media = els.festivalScreen.querySelector('.postcard-media');
     if (!media) return;
     if (state.bgImg) {
-      media.innerHTML = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`;
+      // 使用已 CORS 化的 bgImg 直接渲染(已是浏览器可绘制的对象),
+      // 用 onerror 兜底:即便第二次加载失败,降级为水墨意境。
+      const safeFallback = FALLBACK_DONE_HTML.replace(/'/g, "\\'");
+      media.innerHTML = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" onerror="this.parentElement.innerHTML='${safeFallback}'">`;
     } else {
-      media.innerHTML = '<div class="postcard-media-fallback"></div>';
+      media.innerHTML = FALLBACK_DONE_HTML;
     }
   }
 

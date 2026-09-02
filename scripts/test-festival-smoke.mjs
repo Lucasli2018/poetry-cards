@@ -28,10 +28,10 @@ async function probe(path) {
 async function main() {
   console.log(`[v4.0 smoke] probing ${URL_BASE}\n`);
 
-  // ── 冒烟 1:主页可达 + 含 🎋 按钮 ──
+  // ── 冒烟 1:主页可达 + 含 🎴 按钮 ──
   const home = await probe('');
   ok(home.status === 200, '冒烟 1: 主页 200');
-  ok(home.body.includes('pc-festival-open'), '冒烟 1: header 含 🎋 入口按钮');
+  ok(home.body.includes('pc-festival-open'), '冒烟 1: header 含 🎴 入口按钮');
 
   // ── 冒烟 2:贺卡屏容器存在 ──
   ok(home.body.includes('pc-festival-screen'), '冒烟 2: 贺卡屏容器已挂载(默认 hidden)');
@@ -74,7 +74,7 @@ async function main() {
   // ── 剩余 4 项需真浏览器交互 ──
   console.log(`\n[v4.0 smoke] ${passed} passed / ${failed} failed (静态项)`);
   console.log(`\nℹ  剩余 4 项需真浏览器手工验收(见 README v4.0.0 段落):`);
-  console.log(`   • 点 🎋 → 贺卡屏加载`);
+  console.log(`   • 点 🎴 → 贺卡屏加载`);
   console.log(`   • 节日胶囊切换 / 换一首循环`);
   console.log(`   • 输入字段实时绑定 + 印章切换`);
   console.log(`   • 下载 PNG 含 4 字段 + 分享降级文案`);

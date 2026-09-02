@@ -13,7 +13,7 @@ import path from 'node:path';
 const URL_BASE = process.argv[2] || 'http://localhost:8080/';
 const TMP = path.join(os.tmpdir(), `pc-festival-${Date.now()}`);
 
-const CDP_PORT = 9222;
+const CDP_PORT = 9223;
 const CHROME = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
 
 // 启动 headless Chrome
@@ -149,15 +149,15 @@ try {
   // 清掉任何残留草稿(确保 default state 干净)
   await evaluate(`localStorage.removeItem('pc_v3_festival_draft')`);
 
-  // ── 冒烟:主页含 🎋 ──
+  // ── 冒烟:主页含 🎴 入口 ──
   const hasBtn = await evaluate(`!!document.getElementById('pc-festival-open')`);
-  ok(hasBtn, 'headless 1: header 含 🎋 入口');
+  ok(hasBtn, 'headless 1: header 含 🎴 入口');
 
-  // ── 冒烟:点击 🎋 进入贺卡屏 ──
+  // ── 冒烟:点击 🎴 进入贺卡屏 ──
   await evaluate(`document.getElementById('pc-festival-open').click()`);
   await new Promise(r => setTimeout(r, 800));
   const screenVisible = await evaluate(`!document.getElementById('pc-festival-screen').hidden`);
-  ok(screenVisible, 'headless 2: 点击 🎋 后贺卡屏可见');
+  ok(screenVisible, 'headless 2: 点击 🎴 后贺卡屏可见');
 
   // ── 冒烟:贺卡屏有 5 个胶囊 ──
   const chipsCount = await evaluate(`document.querySelectorAll('.pc-festival-chip').length`);
