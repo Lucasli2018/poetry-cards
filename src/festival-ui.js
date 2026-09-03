@@ -20,32 +20,17 @@ import { fetchSceneImage } from './images.js';
 const SEAL_OPTIONS = ['诗', '礼', '福', '安', '乐', '吉', '春', '祥'];
 const FIELD_LIMITS = { sender: 12, recipient: 12, message: 30 };
 
-// v4.1.3: 进入页面立即显示的"诗意渐变"占位(0 网络请求,看一眼就有意境)
-//   异步 AI 图加载完成后会被 <img> 覆盖;加载失败时保留此占位
-//   6 个主题 key → 6 种水墨渐变,主调用方传 imageHint
+// v4.1.4: 进入页面立即显示"单色背景 + loading 状态"占位(0 网络请求)
+//   - 比 v4.1.3 6 主题渐变更轻量;占位用节令色或米白宣纸色
+//   - 异步 AI 图加载完成后会被 <img> 覆盖;加载失败时保留此占位
+//   - 视觉契约: 用户进入即看到 1 个有内容的矩形(不是空白/转圈)
 function escapeAttr(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function poeticFallbackHtml(hint = 'spring') {
-  return `<div class="postcard-media-fallback postcard-media-fallback--poetic postcard-media-fallback--${escapeAttr(hint)}" role="img" aria-label="水墨意境"><span class="postcard-media-fallback-icon" aria-hidden="true">🏔</span><span class="postcard-media-fallback-text">水墨意境</span></div>`;
+function solidFallbackHtml() {
+  // 单色宣纸色 + loading spinner + 文案; 简洁,等待 API 替换
+  return `<div class="postcard-media-fallback postcard-media-fallback--solid" role="status" aria-label="意境加载中"><span class="postcard-media-fallback-spinner" aria-hidden="true"></span><span class="postcard-media-fallback-text">意境加载中</span></div>`;
 }
 const FALLBACK_LOADING_HTML = '<div class="postcard-media-fallback postcard-media-fallback--loading" role="status" aria-label="意境加载中"><span class="postcard-media-fallback-icon" aria-hidden="true">🎐</span><span class="postcard-media-fallback-text">意境加载中</span></div>';
 const FALLBACK_DONE_HTML    = '<div class="postcard-media-fallback" role="img" aria-label="水墨意境"><span class="postcard-media-fallback-icon" aria-hidden="true">🏔</span><span class="postcard-media-fallback-text">水墨意境</span></div>';
-
-// 从诗里提取主题 hint (供占位渐变用)
-function imageHintForPoem(poem, festivalId) {
-  if (!poem) return 'spring';
-  const text = [poem.title || '', ...(poem.content || [])].join('');
-  if (/(?:月|夜|星)/.test(text)) return 'moonlight';
-  if (/(?:雪|冬|霜)/.test(text)) return 'winter';
-  if (/(?:春|东风|柳|花)/.test(text)) return 'spring';
-  if (/(?:秋|西风|叶)/.test(text)) return 'autumn';
-  if (/(?:夏|荷|蝉)/.test(text)) return 'summer';
-  if (/(?:山|峰|云)/.test(text)) return 'mountain';
-  if (/(?:江|河|水|海)/.test(text)) return 'river';
-  return festivalId === 'midautumn' ? 'moonlight' :
-         festivalId === 'dragon' ? 'summer' :
-         festivalId === 'chongyang' ? 'autumn' :
-         festivalId === 'birthday' ? 'spring' : 'spring';
-}
 
 // 浏览器原生通知(用户首次下载时按需请求授权)
 let _notifyPermissionAsked = false;
@@ -173,12 +158,12 @@ export function mountFestivalUI(storage, els) {
 
     // ③ 预览(明信片)
     if (els.card) {
-      // v4.1.3: 进入即有图 — 诗主题渐变占位
-      //   已有 bgImg(用户切换过/历史)→ 用历史图;否则诗意占位
-      const hint = imageHintForPoem(poem, festival.id);
+      // v4.1.4: 进入即有图 — 单色背景 + loading 状态占位
+      //   已有 bgImg(用户切换过/历史)→ 用历史图;否则单色占位
+      //   API 异步加载完成后会替换为 <img>
       const mediaHtml = state.bgImg
         ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`
-        : poeticFallbackHtml(hint);
+        : solidFallbackHtml();
       els.card.innerHTML = `
         <div class="postcard">
           <div class="postcard-media">${mediaHtml}</div>
@@ -339,8 +324,8 @@ export function mountFestivalUI(storage, els) {
       ...entry.poem,
       imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
     };
-    // v4.1.3: 渐进式增强 — render() 已经把"诗意渐变占位"渲染到图区
-    //   这里只是异步尝试加载 AI 图覆盖;失败/超时也保留诗意占位(不再 fallback--error)
+    // v4.1.4: 渐进式增强 — render() 已经把"单色背景占位"渲染到图区
+    //   这里只是异步尝试加载 AI 图覆盖;失败/超时也保留占位(不再 fallback--error)
     const r = await fetchSceneImage(poemWithKeywords, { totalBudgetMs: 6000 });
     if (r && r.img) {
       state.bgImg = r.img;
@@ -348,7 +333,7 @@ export function mountFestivalUI(storage, els) {
       draftStore.save(stripForSave(state));
       updatePreviewImage();
     }
-    // else: 保留诗意渐变占位(进入即有图,失败也好看)
+    // else: 保留单色占位(进入即有内容,失败也好)
   }
 
   function updatePreviewImage() {

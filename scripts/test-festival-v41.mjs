@@ -82,7 +82,7 @@ try {
   ok(poemState.title && /《.+》/.test(poemState.title) && poemState.content.length > 8,
      `v4.1.3-A: 进入即有诗词 (title=${poemState.title}, content=${poemState.content}...)`);
 
-  // v4.1.3-B: 进入页面 1.5s 内,图区已显示诗意占位(不是空也不是 LOADING)
+  // v4.1.4-B: 进入页面 1.5s 内,图区已显示单色背景占位(不是空也不是 LOADING)
   const mediaState = await evaluate(`(() => {
     const m = document.querySelector('.postcard-media');
     if (!m) return 'no-media';
@@ -91,12 +91,13 @@ try {
     const fb = m.querySelector('.postcard-media-fallback');
     if (!fb) return 'empty';
     if (fb.classList.contains('postcard-media-fallback--error')) return 'ERROR';
+    if (fb.classList.contains('postcard-media-fallback--solid')) return 'SOLID';
     if (fb.classList.contains('postcard-media-fallback--loading')) return 'LOADING';
     if (fb.classList.contains('postcard-media-fallback--poetic')) return 'POETIC';
     return 'unknown';
   })()`);
-  ok(mediaState === 'POETIC' || mediaState === 'img-loaded',
-     `v4.1.3-B: 进入即有图占位(POETIC / img-loaded) (实际 ${mediaState})`);
+  ok(mediaState === 'SOLID' || mediaState === 'img-loaded',
+     `v4.1.4-B: 进入即有单色占位(SOLID / img-loaded) (实际 ${mediaState})`);
 
   // v4.1.1 新增:返回按钮宽度 ≈ 文字宽度(不撑满)
   const backMetrics = await evaluate(`(() => {
@@ -181,7 +182,7 @@ try {
   const contentText = await evaluate(`document.querySelector('.postcard-content')?.textContent?.trim() || null`);
   ok(contentText && contentText.length > 8, `v4.1.2-C: 诗词内容渲染 (${contentText?.slice(0, 30)}...)`);
 
-  // v4.1.2-D: 图片加载状态 — 6s 内必出图或保留诗意占位(v4.1.3: 渐进增强,失败保留 POETIC 不再 error)
+  // v4.1.4-D: 图片加载状态 — 6s 内必出图或保留单色占位(v4.1.4: 渐进增强,失败保留 SOLID 不再 error)
   let imageStatus = 'unknown';
   for (let i = 0; i < 14; i++) {
     imageStatus = await evaluate(`(() => {
@@ -191,15 +192,16 @@ try {
       if (img && img.src && img.complete && img.naturalWidth > 0) return 'loaded:' + (img.src.includes('pollinations') ? 'Pollinations' : img.src.includes('picsum') ? 'Picsum' : 'other');
       const fb = media.querySelector('.postcard-media-fallback');
       if (fb?.classList.contains('postcard-media-fallback--error')) return 'error-fallback';
+      if (fb?.classList.contains('postcard-media-fallback--solid')) return 'solid-keep';
       if (fb?.classList.contains('postcard-media-fallback--loading')) return 'loading';
       if (fb?.classList.contains('postcard-media-fallback--poetic')) return 'poetic-keep';
       return 'idle';
     })()`);
-    if (imageStatus.startsWith('loaded:') || imageStatus === 'error-fallback' || imageStatus === 'poetic-keep') break;
+    if (imageStatus.startsWith('loaded:') || imageStatus === 'error-fallback' || imageStatus === 'solid-keep' || imageStatus === 'poetic-keep') break;
     await new Promise(r => setTimeout(r, 400));
   }
-  ok(imageStatus.startsWith('loaded:') || imageStatus === 'poetic-keep',
-     `v4.1.2-D: 图片加载状态(出图或保留诗意占位) (${imageStatus})`);
+  ok(imageStatus.startsWith('loaded:') || imageStatus === 'solid-keep' || imageStatus === 'poetic-keep',
+     `v4.1.4-D: 图片加载状态(出图或保留占位) (${imageStatus})`);
 
   // ── 4. ← 抽卡 返回主页(dirty 提示 confirm 必须覆盖) ──
   await evaluate(`window.confirm = () => true`);  // 接受"确定离开"
