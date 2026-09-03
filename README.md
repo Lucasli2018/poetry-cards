@@ -1,7 +1,7 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-> **v4.1.9** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
+> **v4.3.2** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
@@ -88,12 +88,17 @@ poetry-cards/
 ├── assets/
 │   └── icons/              favicon.svg/.ico/-32.png · apple-touch-icon.png · icon-192/512.png
 ├── scripts/
-│   ├── serve.py            零依赖本地静态服务器（修正 .js/.webmanifest MIME，跨平台可用）
-│   ├── make_favicon.py     纯标准库生成图标（struct+zlib 手写 PNG/ICO，输出至 assets/icons）
-│   ├── test-store.mjs      store 单测（90 用例，纯 node 无依赖）
-│   ├── test-storage-dialog.mjs  导入/导出 单测（27 用例）
-│   ├── test-festival.mjs   festival 单测（108 用例）
-│   └── check-modules.mjs   ESM 模块链路冒烟
+│   ├── serve.py                  零依赖本地静态服务器（修正 .js/.webmanifest MIME，跨平台可用）
+│   ├── make_favicon.py           纯标准库生成图标（struct+zlib 手写 PNG/ICO，输出至 assets/icons）
+│   ├── check-modules.mjs         ESM 模块链路冒烟
+│   ├── test-store.mjs            store 单测（90 用例，纯 node 无依赖）
+│   ├── test-storage-dialog.mjs   导入/导出 单测（27 用例）
+│   ├── test-festival.mjs         festival 单测（108 用例）
+│   ├── test-seal-deep.mjs        印章深度验证（v4.x 视觉一致性）
+│   ├── test-festival-smoke.mjs   静态资源 smoke（19 项，v4.0 起）
+│   ├── test-festival-v41.mjs     贺卡页端到端 e2e（18 项，v4.1 起）
+│   ├── test-festival-headless.mjs headless Chrome 交互验证（12 项，v4.0 起）
+│   └── test-festival-img-deep.mjs  图源/超时/降级深度探测（v4.1.3 起）
 └── src/
     ├── main.js             主流程：一图一诗 · 请求纪律 · 主题切换 · v3.1 记忆入口
     ├── images.js           意象提取 + 图片多源守护（extractThemes 已 export，超时按预算分配）
@@ -223,6 +228,36 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.3.2 (2026-09-03) — 收尾归档
+
+把 v4.0.0 → v4.3.1 期间零散的小修复统一打包归档；精简项目结构，移除开发期的临时调试脚本。
+
+- **scripts/ 精简（13 → 9）**：删除 `debug-stats.mjs`（v3.2 stats 临时调试）、`test-fetch-source.mjs`（图源 HEAD 探针，已废弃）、`test-festival-bug.mjs`（v4.0 双 bug 复现脚本，已修复无价值）、`visual-check.mjs`（v3.2.5 体积估算，已被 e2e 覆盖）。保留 9 个核心：`check-modules.mjs` / `test-store.mjs` / `test-storage-dialog.mjs` / `test-festival.mjs` / `test-seal-deep.mjs` / `test-festival-smoke.mjs` / `test-festival-v41.mjs` / `test-festival-headless.mjs` / `test-festival-img-deep.mjs`。
+- **README 同步**：scripts/ 块更新到 9 个脚本 + 各自覆盖范围；版本号更新到 v4.3.2；技术栈数字保持 11 源文件 ~2200 行（删除的脚本不计入）。
+
+### v4.3.1 (2026-09-03) — 修换图「图被刷掉」+ 导出 PNG 字段无分隔
+
+两个用户实际反馈的 bug 合并修复：
+
+- **Bug 1：换图「图被刷掉」**
+  - 根因：v4.3.0 的 `onSwapImage` 在 `fetchSceneImage` 前调 `render()` 写临时图（loading 态 + 临时 Picsum URL），导致 DOM 全量重建 → 老 `<img>` 被销毁 → 用户先看到 1~3s 黑屏 + spinner → 再看到新图。
+  - 修复：移除 `render()` 临时图步骤，loading 反馈改用按钮 `.is-busy` class 旋转；新增 `updatePostcardImage(url, source)` 局部更新 `<img src>`（对齐主页 `updateImageOnly` 模式），不重建 `.postcard-body` → 字段区/分隔/标题不重排，老图保留到新图加载完成。
+
+- **Bug 2：导出 PNG 字段无分隔**
+  - 根因：`composeCard` 在诗词正文和送给/寄语之间没画 `.postcard-rule--fields`。
+  - 修复：`cards.js composeCard` 在诗词 for 循环后、送给/寄语 `if (opt.hasOptions)` 前插入分隔绘制，与 `styles.css` 1:1 对齐：双线（`ruleW = FONT_W * 0.148`）+ 朱砂圆点（`dotR = FONT_W * 0.0048`），间距按 `FONT_W` 缩放。FONT_W=520 → ruleW=77px（贺卡页）/ FONT_W=1080 → ruleW=160px（标准分享图），1:1 对齐 styles.css。**仅当有任一用户字段（recipient || message || sender）时绘制**，与 `.postcard-user-fields` 显示规则一致。
+
+- 验证：17/17 静态 smoke + 3/3 e2e 全绿（绘制顺序 / 颜色契约 / 比例扩展）。
+
+### v4.3.0 (2026-09-03) — 贺卡换图按钮 + 诗词/字段视觉分隔
+
+把两个用户反馈一致请求的小改进合并发布：
+
+- **贺卡页加换图按钮**（参考主页 `.pc-swap-img`）：相同 DOM + 内嵌 SVG ↻ 图标，嵌在 `.postcard-media` 右上角。复用当前诗词 + 当前节日，只换图（不动 `state.poemId`、不动 `state.dirty`）。
+- **诗词 → 用户字段 视觉分隔**：`.postcard-rule--fields` 双线（上下各 1px）+ 中间朱砂圆点 + 容器 `.postcard-user-fields`，仅当任一字段非空时显示。
+- 新增 `onSwapImage()`：`_busy` / `_swapSeq` 双锁防连击；过期响应丢弃（对齐主页 `swapImage` 模式）；`totalBudgetMs=10000`（用户主动行为值得等 AI 出图）；seed 用 `Date.now() + 随机数` 与首图区分；busy 时按钮加 `is-busy` class 旋转。
+- 验证：26/26 静态 smoke 全绿（覆盖：按钮 DOM / 事件绑定 / 函数逻辑 / CSS 样式 / 主页契约零破坏 / v4.2.0 exportSize 保持）。
 
 ### v4.1.9 (2026-09-03) — 修贺卡页 postcard 永远 opacity:0 致命 bug
 
