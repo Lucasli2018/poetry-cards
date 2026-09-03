@@ -1122,6 +1122,42 @@ body {
   letter-spacing: 0.1em;
 }
 
+/* v4.3.0: 诗词区 ↔ 用户填写区 视觉分隔
+ *   .postcard-content(诗词正文) 和 .postcard-user-fields(收信人/寄语/落款) 之间
+ *   用更粗的 .postcard-rule--fields 分隔(48px 宽 + 双线 + 中间圆点),与顶部 46px 细线形成对比
+ *   区分"诗"与"我的心意"
+ */
+.postcard-user-fields {
+  margin-top: 4px;
+  padding: 4px 0 2px;
+}
+.postcard-rule--fields {
+  width: 64px;
+  height: 0;
+  margin: 22px auto 18px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  height: 3px;
+  background: transparent;
+  position: relative;
+}
+.postcard-rule--fields::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vermil);
+}
+.pc-dark .postcard-rule--fields {
+  border-top-color: var(--line);
+  border-bottom-color: var(--line);
+}
+
 /* 自定义字段区 */
 .pc-festival-fields {
   display: grid;

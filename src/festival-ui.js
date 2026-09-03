@@ -203,7 +203,13 @@ export function mountFestivalUI(storage, els) {
       els.card.innerHTML = (state.imageStatus !== 'idle')
         ? `
         <div class="postcard" id="pc-festival-postcard">
-          <div class="postcard-media">${mediaInner}</div>
+          <div class="postcard-media">${mediaInner}
+            <button class="pc-swap-img" type="button" title="换一张配图（保留诗词）" aria-label="换一张配图">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+              </svg>
+            </button>
+          </div>
           <div class="postcard-body">
             <h3 class="postcard-title">《${escapeHtml(poem.title)}》</h3>
             <p class="postcard-meta">${[poem.dynasty, poem.author, poem.type].filter(Boolean).map(escapeHtml).join(' · ')}</p>
@@ -211,9 +217,13 @@ export function mountFestivalUI(storage, els) {
             <div class="postcard-content">
               ${poem.content.map(line => `<p>${escapeHtml(line)}</p>`).join('')}
             </div>
-            ${state.recipient ? `<p class="postcard-gift">送给 ${escapeHtml(state.recipient)}</p>` : ''}
-            ${state.message ? `<p class="postcard-message">${escapeHtml(state.message)}</p>` : ''}
-            ${state.sender ? `<p class="postcard-sender">— ${escapeHtml(state.sender)} 敬上</p>` : ''}
+            ${(state.recipient || state.message || state.sender) ? `
+            <hr class="postcard-rule postcard-rule--fields">
+            <div class="postcard-user-fields">
+              ${state.recipient ? `<p class="postcard-gift">送给 ${escapeHtml(state.recipient)}</p>` : ''}
+              ${state.message ? `<p class="postcard-message">${escapeHtml(state.message)}</p>` : ''}
+              ${state.sender ? `<p class="postcard-sender">— ${escapeHtml(state.sender)} 敬上</p>` : ''}
+            </div>` : ''}
             <p class="postcard-foot">古韵抽卡 · 一图一诗</p>
             <span class="postcard-seal" aria-label="印章">${escapeHtml(state.sealText)}</span>
           </div>
@@ -248,6 +258,8 @@ export function mountFestivalUI(storage, els) {
     document.getElementById('pc-f-btn-next')?.addEventListener('click', onNextPoem);
     document.getElementById('pc-f-btn-download')?.addEventListener('click', onDownload);
     document.getElementById('pc-f-btn-share')?.addEventListener('click', onShare);
+    // v4.3.0: 贺卡图区「换图」按钮(参考主页面 .pc-swap-img) — 复用当前诗词, 只换图
+    document.getElementById('pc-festival-postcard')?.querySelector('.pc-swap-img')?.addEventListener('click', onSwapImage);
 
     const recipient = document.getElementById('pc-f-field-recipient');
     const sender = document.getElementById('pc-f-field-sender');
@@ -396,6 +408,54 @@ export function mountFestivalUI(storage, els) {
       state.imageStatus = 'error';
     }
     render();
+  }
+
+  // v4.3.0: 单独换图(参考主页面 main.js#swapImage)
+  //   复用当前诗词, 只换图 — 不动 state.poemId, 不动 state.dirty
+  //   加 _busy / _swapSeq 锁防连击;busy 时按钮加 is-busy 类旋转
+  let _busy = false;
+  let _swapSeq = 0;
+  async function onSwapImage() {
+    if (_busy) return;
+    const entry = getPoemById(state.poemId);
+    if (!entry) return;
+    const festival = getFestivalById(state.festivalId);
+    const btn = document.querySelector('#pc-festival-postcard .pc-swap-img');
+    btn?.classList.add('is-busy');
+    _busy = true;
+    const seq = ++_swapSeq;
+    state.imageStatus = 'loading';
+    // v4.3.0: 换图是用户主动行为, 给更长预算 (与主页面一致 10000ms)
+    //   seed 用 Date.now() + 随机数, 避免和首图 seed 重合
+    const seed = Date.now() + Math.floor(Math.random() * 1e6);
+    state.imageUrl = `https://picsum.photos/seed/${seed}/720/450`;
+    render();
+    try {
+      const poemWithKeywords = {
+        ...entry.poem,
+        imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
+      };
+      const r = await fetchSceneImage(poemWithKeywords, { seed, totalBudgetMs: 10000 });
+      if (seq !== _swapSeq) return;   // 期间又触发了, 丢弃
+      if (r && r.img) {
+        state.bgImg = r.img;
+        state.imageUrl = r.url || state.imageUrl;
+        state.imageStatus = 'ok';
+        draftStore.save(stripForSave(state));
+        showToast('已换一张配图', 'success');
+      } else {
+        state.imageStatus = 'error';
+        showToast('配图暂不可用,请稍后再试', 'error');
+      }
+    } catch (e) {
+      console.error('[festival] swapImage failed', e);
+      state.imageStatus = 'error';
+      showToast('换图失败,请稍后再试', 'error');
+    } finally {
+      _busy = false;
+      btn?.classList.remove('is-busy');
+      render();
+    }
   }
 
   async function onDownload() {
