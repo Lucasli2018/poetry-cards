@@ -317,9 +317,12 @@ async function swapImage() {
   const btn = els.stage.querySelector('.pc-swap-img');
   btn?.classList.add('is-busy');
   try {
-    // 新随机 seed → 不同的图（与首图 seed 区分开，避免拿到同一张）
+    // v4.1.8: 换图是用户主动行为, 给更长的预算 — 等 AI 图失败再降级, 比秒出 fallback 好
+    //   totalBudgetMs=10000(10s) 够 Pollinations AI 出图(3-5s)+ Picsum 兜底
+    //   首屏 drawNew 仍走默认 4000ms(进入要快); 贺卡页独立 6000ms(已有)
+    //   seed 用 Date.now() + 随机数, 与首图 seed 区分避免拿到同一张
     const { img, url, source } = await fetchSceneImage(
-      curPoem, { seed: Date.now() + Math.floor(Math.random() * 1e6) }
+      curPoem, { seed: Date.now() + Math.floor(Math.random() * 1e6), totalBudgetMs: 10000 }
     );
     if (seq !== _seq) return;   // 期间又触发了换诗/换图，丢弃本次
     curImg = img;

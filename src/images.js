@@ -234,20 +234,23 @@ function picsumUrl(opts = {}) {
  */
 export async function fetchSceneImage(poem, opts = {}) {
   // v4.1.3: Picsum 主源(秒出,稳定)→ Pollinations 备源
-  //   原因: Pollinations 实际 3-5s 出图, 用户等不及
-  //   Picsum 虽无主题匹配,但稳定秒出,作为主源对"进入即有图"体验至关重要
+  // v4.1.8: 每源超时按 totalBudget 比例分配, 不再硬 cap 在 1.5/2s
+  //   旧硬 cap 在 Pollinations 实际 3-5s 出图时过早放弃, swapImage 用户主动行为给 10s 总预算时浪费
+  //   分配策略: Picsum ≤ 2000ms (够秒出即可, 失败立即降级); Pollinations 占剩余预算 80% (主题贴合值得等)
   const totalBudget = Math.max(2000, opts.totalBudgetMs || 4000);
   const t0 = Date.now();
   const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
 
   // ① Picsum 主源(seed 稳定,1s 内必出)
   const pUrl = picsumUrl(opts);
-  let img = await loadImage(pUrl, Math.min(1500, remain()));
+  let img = await loadImage(pUrl, Math.min(2000, remain()));
   if (img) return { img, url: pUrl, source: 'Picsum' };
 
-  // ② Pollinations 备源(主题贴合,但慢)
+  // ② Pollinations 备源(主题贴合,但慢 — 3-5s 出图)
+  //   给到剩余预算的 80%, 最低 3000ms, 最高 8000ms
   const aiUrl = pollinationsUrl(poem, opts);
-  img = await loadImage(aiUrl, Math.min(2000, remain()));
+  const aiTimeout = Math.max(3000, Math.min(8000, Math.floor(remain() * 0.8)));
+  img = await loadImage(aiUrl, aiTimeout);
   if (img) return { img, url: aiUrl, source: 'Pollinations' };
 
   // ③ 都失败：返回 null, 由调用方保留诗意渐变占位
