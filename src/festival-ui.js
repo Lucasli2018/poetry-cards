@@ -222,6 +222,14 @@ export function mountFestivalUI(storage, els) {
         : skeletonHtml();
     }
 
+    // v4.1.9 修复: .postcard 默认 opacity: 0(主页面 renderPostcard 用 requestAnimationFrame 加 .is-in)
+    //   贺卡页之前漏了这一步, 导致 postcard 永远 opacity:0 用户看不见任何内容
+    //   必须每渲染一次就激活(状态机切换 / 换诗 / 输入字段 都会触发 render)
+    if (els.card) {
+      const card = document.getElementById('pc-festival-postcard');
+      if (card) requestAnimationFrame(() => card.classList.add('is-in'));
+    }
+
     // ④ 操作按钮
     if (els.actions) {
       els.actions.innerHTML = `
