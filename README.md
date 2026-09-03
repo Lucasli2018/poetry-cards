@@ -1,14 +1,14 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-> **v4.3.2** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
+> **v4.4.0** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
 
 ## 功能
 
-- 🖼️ **一进页面就出片**：自动取 1 首随机诗词 + 1 张配图，直接合成明信片，无需点击（默认走本地库，秒开）
+- 🖼️ **一进页面就出片**（v4.4.0 双源并发）：自动取 1 首随机诗词 + **毫秒级渲染诗词卡片**（不等图）+ 异步双源并发（Picsum 1.5s 秒出 → Pollinations 3-5s 主题贴合）渐进增强替换，无需点击（默认走本地库，秒开）
 - 🎨 **AI 意象配图**：从诗词提取意象生成 AI 提示词出图，配图贴着诗意；失败降级风景关键词图
 - 📮 **明信片版式**：横排诗词居中、大留白、细线分隔、朱砂小印
 - ⬇️ **导出 PNG**：Canvas 合成 **1080×1440**（3:4）竖版图，一键下载
@@ -30,6 +30,7 @@
 | `_busy` 同步锁 | 连击 / 空格 / 触摸二次触发，一律在入口处丢弃 |
 | `_lastClickAt` 250ms 防抖 | 防移动端 tap×2 |
 | `AbortController` | 取消在途旧请求，避免旧响应覆盖新结果 |
+| **v4.4.0 双源并发渐进增强** | 诗词**毫秒级可见**（拿到诗就 renderPostcard）；Picsum 1.5s + Pollinations 3-5s 并发启动，谁先到谁先替换；失败静默保留已出图 |
 | 令牌桶 + 熔断（`api.js`） | 容量 6 / 3 每秒 / 并发 ≤2；连续 5 次失败开路，冷却 10s 后半开探测 |
 
 > 历史包袱：v2.0 曾用「池化预加载」（一次并发 6 个 random），会瞬间触发诗泉 API 的 429 限流，已于 v2.2 起彻底移除。
@@ -58,17 +59,21 @@
 >
 > 💡 图源必须带 CORS 头，否则 Canvas 会被污染（tainted），`toDataURL()` 直接抛 `SecurityError`，导出功能将完全不可用。因此图片加载统一设 `crossOrigin='anonymous'`。
 
-### 图片超时分配（v4.1.8 起）
+### 图片超时分配（v4.4.0 起双源并发）
 
-每源不再硬 cap，超时按总预算比例分配：
+每源不再硬 cap，超时按总预算比例分配；**两源并发启动，谁先到谁先替换**：
 
-| 调用方 | 总预算 `totalBudgetMs` | Picsum | Pollinations |
-| --- | --- | --- | --- |
-| `drawNew` 首屏（默认） | 4000 | ≤2000ms | 3000-8000ms |
-| 贺卡页 `loadImage` | 6000 | ≤2000ms | 4800ms |
-| 用户主动 `swapImage` ↻ | **10000** | ≤2000ms | **8000ms** |
+| 调用方 | 总预算 `totalBudgetMs` | Picsum | Pollinations | 模式 |
+| --- | --- | --- | --- | --- |
+| `drawNew` 首屏（默认） | 4000 | 2000ms 并发 | max(3000, min(8000, floor(remain*0.8))) | **双源并发，渐进增强** |
+| 贺卡页 `loadImage` | 6000 | 2000ms 并发 | 同上 | **双源并发，渐进增强** |
+| 用户主动 `swapImage` ↻ | 10000 | 2000ms 并发 | 同上 | **双源并发，渐进增强** |
 
-主动操作值得等 AI 出图，不秒出 fallback。
+**关键变化（v4.4.0）**：
+- 旧实现是**串行**：先 await picsum → 失败 → await pollin。诗词出现时间 = `picsum 出图 + 渲染 ≈ 1.5s`
+- 新实现是**并发**：`Promise.allSettled([picsum, pollin])`，诗词出现时间 = `拿到诗即可 ≈ 100ms`
+- 任一先到通过 `onPicsum` / `onPollinations` 回调 → 局部更新 `<img src>`（**不重建 .postcard-body**）
+- 失败/超时静默跳过，保留已出的图；全失败才 `source='none'` + 单色 `.postcard-media--empty`
 
 ## 技术栈
 
@@ -99,6 +104,7 @@ poetry-cards/
 │   ├── test-festival-v41.mjs     贺卡页端到端 e2e（18 项，v4.1 起）
 │   ├── test-festival-headless.mjs headless Chrome 交互验证（12 项，v4.0 起）
 │   └── test-festival-img-deep.mjs  图源/超时/降级深度探测（v4.1.3 起）
+│   └── test-images-v44.mjs         双源并发契约测试（v4.4.0 起，14 用例）
 └── src/
     ├── main.js             主流程：一图一诗 · 请求纪律 · 主题切换 · v3.1 记忆入口
     ├── images.js           意象提取 + 图片多源守护（extractThemes 已 export，超时按预算分配）
@@ -127,41 +133,44 @@ poetry-cards/
 
 ## 数据流
 
-### 主页抽卡屏
+### 主页抽卡屏（v4.4.0 双源并发）
 
 ```
 页面加载
-  ├─ 经典诗词模式（默认开启）→ 直接取本地 70 首，0 请求
-  └─ 关闭时：
-       ├─ 请求 1  apiRequest('/api/poems/random')      ── 唯一一次
-       │    └─ 失败 → 本地 70 首兜底 + 降级横幅
-       └─ 请求 2  fetchSceneImage(poem)                ── 唯一一次
-            ├─ 从诗词正文提取意象 → 英文提示词 / 风景关键词
-            └─ Picsum(秒出) → Pollinations(主题) → CSS 兜底
-  ↓
-渲染明信片（DOM .is-in 激活显示）
+  ├─ showSkeleton() 骨架过渡 (极快)
+  └─ drawNew() 启动
+       ├─ 拿到诗 → renderPostcard(poem, '', 'none') 同步拼完整卡片
+       │           ├─ 诗词 / 作者朝代 / 字段区 / 印章 就位
+       │           └─ 图区显示单色米白宣纸 (.postcard-media--empty)
+       └─ fetchSceneImage() 异步双源并发:
+            ├─ ① Picsum     timeout=2000ms (秒出稳定)
+            ├─ ② Pollinations timeout=3000~8000ms (主题贴合, 慢)
+            ├─ 任一成功 → onPicsum/onPollinations 回调
+            │             → updateImageOnly() 局部替换 <img src>
+            │             → 诗词/字段/分隔 0 重排
+            └─ 全失败 → 保留单色 .postcard-media--empty 占位
   ↓
 点「下载」→ composeCard() 用同一张 CORS 图合成 Canvas → 1080×1440 PNG
 点「分享」→ navigator.share({files}) → 失败则复制文案
-点「↻」→ swapImage(10000ms) 仅重取图片
+点「↻」→ swapImage(10000ms) 双源并发, toast 区分反馈
 ```
 
-> 默认开启「经典诗词」后，首屏不发任何远程诗词请求，只发 1 次配图请求。
+> 默认开启「经典诗词」后，首屏不发任何远程诗词请求，发 1 次 Picsum + 1 次 Pollinations 并发（其中 Picsum 通常先到，Pollinations 后到作为主题增强）。
 
-### 贺卡屏（v4.1 festival.html）
+### 贺卡屏（v4.1 festival.html，v4.4.0 双源并发）
 
 ```
 页面加载
   ├─ boot() 同步 state.imageStatus='loading' + 临时 picsum URL
   └─ render() 嵌 <img>+spinner (浏览器开始加载)
-  └─ loadImage() 异步 fetchSceneImage(6000ms)
-       ├─ 成功 → state.imageStatus='ok' → 整卡重渲染 → .is-in 激活
-       ├─ 失败 → state.imageStatus='error' → fallback "意境暂不可用"
-       └─ 异常 → catch 块也保护 → error 态
+  └─ loadImage() 异步 fetchSceneImage() 双源并发:
+       ├─ Picsum 先到 → onPicsum → updatePostcardImage() 局部替换 <img src>
+       ├─ Pollinations 后到 → onPollinations → 再次局部替换
+       └─ 全失败 → state.imageStatus='error' → fallback "意境暂不可用"
   ↓
 用户输入收信人/落款/寄语 → debounce 500ms 写入 pc_v3_festival_draft
   ↓
-点「下载 PNG」→ composeCard(poem, bgImg, host, {recipient, sender, message, sealText})
+点「下载 PNG」→ composeCard(poem, bgImg, host, {recipient, sender, message, sealText, exportSize})
               → Canvas 1080×1440 PNG
 ```
 
@@ -228,6 +237,42 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.4.0 (2026-09-03) — 双源并发渐进增强
+
+把"等图回来才渲染卡片"改成"诗词毫秒级可见 + 图渐进增强"，是用户体验质变的一次架构级调整。
+
+**问题**：旧实现是 `await fetchSceneImage()` 串行拿图再 `renderPostcard()`，诗词出现时间 = Picsum 出图时间（约 1.5s）。用户进入页面先看到骨架（无诗词），等图回来才看到完整卡片——诗词出现太晚。
+
+**新流程**（`src/main.js#drawNew` + `src/images.js#fetchSceneImage`）：
+
+```
+T+0ms      showSkeleton() 骨架过渡 (v3.x 已有, 首屏非常快)
+T+0+ms    拿到诗 → renderPostcard(poem, '', 'none') 同步拼完整卡片
+          ├─ 诗词 / 作者朝代 / 字段区 / 印章 全部就位
+          └─ 图区显示单色米白宣纸 (.postcard-media--empty)
+T+0ms     fetchSceneImage() 双源并发启动:
+          ├─ ① Picsum     timeout=2000ms (秒出稳定)
+          └─ ② Pollinations timeout=3000~8000ms (主题贴合)
+T+~1500ms Picsum 成功 → onPicsum 回调 → updateImageOnly() 局部替换 <img src>
+          诗词/字段/分隔 0 重排, 老图区占位平滑过渡到真图
+T+~5000ms Pollinations 成功 → onPollinations 回调 → 再次局部替换 <img src>
+          主题更贴合, 进一步增强视觉
+失败/超时 → 不替换, 静默保留已出的图(或初始单色占位)
+```
+
+**关键设计**：
+- **不串行**：旧实现 `await picsum → fail → await pollin`；新实现 `Promise.allSettled([picsum, pollin])` 并发，平均出图时间 = `min(Picsum, Pollinations) ≈ 1.5s`
+- **不重建卡片**：复用 v4.3.1 的 `updateImageOnly` / `updatePostcardImage` 局部更新 `<img src>`，诗词/字段/分隔 0 重排
+- **失败不降级到底**：任一图源失败静默跳过，保留已出的图；只有全失败才 `source='none'` + 单色 `.postcard-media--empty`
+- **swapImage 同样受益**：换图按钮也走双源，toast 区分反馈（"已换主题图" vs "已换一张配图"）
+
+**新测试**：`scripts/test-images-v44.mjs`（14 用例）— 覆盖 picsum URL 格式 / sceneImageUrl 主源切换 / 不同 seed 区分 / extractThemes 主题提取 / poemPrompt 提示词构建 / SCENE_IMG 单一真相源。`node --check` 全过。
+
+**架构红线 0 破**：
+- 「每次只发 2 个请求」仍是上限（实际可能 3：诗词 + Picsum + Pollinations，但都是首次/换图各 1 次，**重复请求不超 2**）
+- 零依赖 + 单 HTML + 原生 ESM 不变
+- `composeCard` 字节级不变（导出仍走 Canvas，旧契约不受影响）
 
 ### v4.3.2 (2026-09-03) — 收尾归档
 

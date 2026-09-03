@@ -172,6 +172,10 @@ export const SCENE_IMG_H = 450;
 //   减少「点击换一张 → 长时间等待」的体感
 const IMG_TIMEOUT_MS = 4000;
 const AI_TIMEOUT_MS = 6000;   // v4.1.2: Pollinations 实际生成图 3-5s, 3.5s 太短 → 6s
+// v4.4.0: 双源并发上限 — Picsum 秒出分配 2s, Pollinations AI 主题贴合分配到 8s
+const PIC_TIMEOUT_MS = 2000;
+const POLLIN_TIMEOUT_MS_MIN = 3000;
+const POLLIN_TIMEOUT_MS_MAX = 8000;
 
 /**
  * 加载一张可用于 Canvas 导出的图片。
@@ -226,41 +230,99 @@ function picsumUrl(opts = {}) {
 }
 
 /**
- * 为一首诗取一张配图。多源依次尝试，任一成功即返回。
- * 顺序：Pollinations(6s) → Picsum(3s) — 总预算 10s 内必出图
+ * v4.4.0 双源并发渐进增强
+ * ──────────────────────────────────────────────────────────
+ * 用户体验目标：诗词卡片**毫秒级可见**, 图渐进增强。
+ *
+ * 流程(主路径,被 drawNew / loadImage 调用):
+ *   T+0ms      调用方同步拼卡片骨架(诗词 + 单色图区背景)        [0 网络请求]
+ *   T+0ms      fetchSceneImage 启动两个独立请求:
+ *              ├─ ① Picsum     timeout=2000ms(秒出稳定)
+ *              └─ ② Pollinations timeout=3000~8000ms(主题贴合,慢)
+ *   T+~1500ms  Picsum 成功 → 调用方局部替换 <img src>(不重建卡片)
+ *   T+~5000ms  Pollinations 成功 → 调用方再局部替换 <img src>
+ *   失败/超时  → 不替换, 保留已出的图(或初始骨架)
+ *
+ * 设计要点:
+ *   - **不串行**: 旧实现是 Picsum → fail → Pollinations 串行, 主题图平均要 3-5s;
+ *     新实现双源并发, 任一先到就先替换, 平均出图时间 = min(Picsum, Pollinations) ≈ 1.5s
+ *   - **不重建**: 调用方用 updateImageOnly / updatePostcardImage 局部更新 <img src>,
+ *     诗词/字段/分隔不重排(对齐 v4.3.1 模式)
+ *   - **失败不降级到底**: 任一失败不抛错, 静默保留上一张图; 全部失败才回 source='none'
+ *
  * @param {object} poem
- * @param {{width?:number, height?:number, seed?:number, totalBudgetMs?:number}} opts
+ * @param {{width?:number, height?:number, seed?:number,
+ *          totalBudgetMs?:number,
+ *          onPicsum?:(r)=>void,
+ *          onPollinations?:(r)=>void}} opts
+ *   onPicsum / onPollinations 是回调, 哪张图先到就先回调(可同步替换 UI)
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
+ *   返回最后成功的图(优先 Picsum, 后 Pollinations); 全失败则 {null, null, 'none'}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  // v4.1.3: Picsum 主源(秒出,稳定)→ Pollinations 备源
-  // v4.1.8: 每源超时按 totalBudget 比例分配, 不再硬 cap 在 1.5/2s
-  //   旧硬 cap 在 Pollinations 实际 3-5s 出图时过早放弃, swapImage 用户主动行为给 10s 总预算时浪费
-  //   分配策略: Picsum ≤ 2000ms (够秒出即可, 失败立即降级); Pollinations 占剩余预算 80% (主题贴合值得等)
   const totalBudget = Math.max(2000, opts.totalBudgetMs || 4000);
   const t0 = Date.now();
   const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
 
-  // ① Picsum 主源(seed 稳定,1s 内必出)
+  // Picsum timeout: 2000ms(够秒出, 失败立即降级)
+  // Pollinations timeout: 剩余预算的 80%, 但 3000-8000ms 之间
   const pUrl = picsumUrl(opts);
-  let img = await loadImage(pUrl, Math.min(2000, remain()));
-  if (img) return { img, url: pUrl, source: 'Picsum' };
-
-  // ② Pollinations 备源(主题贴合,但慢 — 3-5s 出图)
-  //   给到剩余预算的 80%, 最低 3000ms, 最高 8000ms
   const aiUrl = pollinationsUrl(poem, opts);
-  const aiTimeout = Math.max(3000, Math.min(8000, Math.floor(remain() * 0.8)));
-  img = await loadImage(aiUrl, aiTimeout);
-  if (img) return { img, url: aiUrl, source: 'Pollinations' };
+  const picTimeout = PIC_TIMEOUT_MS;
+  const aiTimeout = Math.max(
+    POLLIN_TIMEOUT_MS_MIN,
+    Math.min(POLLIN_TIMEOUT_MS_MAX, Math.floor(remain() * 0.8))
+  );
 
-  // ③ 都失败：返回 null, 由调用方保留诗意渐变占位
+  // 双源并发 — Promise 包装 loadImage, 任一 resolve 就触发回调
+  const picPromise = loadImage(pUrl, picTimeout).then((img) => {
+    if (img && opts.onPicsum) opts.onPicsum({ img, url: pUrl, source: 'Picsum' });
+    return img ? { img, url: pUrl, source: 'Picsum' } : null;
+  });
+  const aiPromise = loadImage(aiUrl, aiTimeout).then((img) => {
+    if (img && opts.onPollinations) opts.onPollinations({ img, url: aiUrl, source: 'Pollinations' });
+    return img ? { img, url: aiUrl, source: 'Pollinations' } : null;
+  });
+
+  // 等待两者: 优先返回先到的, 但要等到两者都 settle(成功/失败/超时)
+  //   避免悬空的 img 仍在加载(后台占带宽)
+  const results = await Promise.allSettled([picPromise, aiPromise]);
+
+  // 优先级: Picsum 先到 → 用 Picsum; Picsum 失败 → 用 Pollinations; 都失败 → 'none'
+  const pic = results[0].status === 'fulfilled' ? results[0].value : null;
+  const ai  = results[1].status === 'fulfilled' ? results[1].value : null;
+
+  if (pic) return pic;
+  if (ai) return ai;
   return { img: null, url: null, source: 'none' };
 }
 
 /**
  * 仅取主图源 URL（不预加载），用于 <img src> 直接展示。
- * 当前主图源为 Pollinations；导出时才走 fetchSceneImage 拿 CORS 版。
+ * 当前主图源为 Picsum（秒出稳定）；Pollinations 走 fetchSceneImage 并发追加。
  */
 export function sceneImageUrl(poem, opts = {}) {
-  return pollinationsUrl(poem, opts);
+  return picsumUrl(opts);
+}
+
+// ── 向后兼容: 旧 API 仍可独立调用 ──
+// v4.4.0 之前, fetchSceneImage 是串行(Pollinations → Picsum);
+// 旧实现走 images.js 的 aiImgUrl / picsumUrl + 内部 Promise.race.
+// 现拆成 fetchPicsumImage / fetchPollinationsImage 两个独立函数,
+// 供需要在「一张图就够」场景下使用的调用方.
+// 不破坏 _resolveOptions / 其他现有契约.
+export async function fetchPicsumImage(opts = {}) {
+  const url = picsumUrl(opts);
+  const img = await loadImage(url, PIC_TIMEOUT_MS);
+  return img ? { img, url, source: 'Picsum' } : { img: null, url: null, source: 'none' };
+}
+
+export async function fetchPollinationsImage(poem, opts = {}) {
+  const url = pollinationsUrl(poem, opts);
+  const timeout = Math.max(
+    POLLIN_TIMEOUT_MS_MIN,
+    Math.min(POLLIN_TIMEOUT_MS_MAX, opts.totalBudgetMs || AI_TIMEOUT_MS)
+  );
+  const img = await loadImage(url, timeout);
+  return img ? { img, url, source: 'Pollinations' } : { img: null, url: null, source: 'none' };
 }

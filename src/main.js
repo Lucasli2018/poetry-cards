@@ -308,6 +308,7 @@ function updateImageOnly(url, source) {
 }
 
 // 单独换图：复用当前诗词，换新 seed 重新取配图；遵守请求纪律（_busy / _seq）。
+// v4.4.0: 与 drawNew 同样走双源并发渐进增强 — Picsum 先到先替换, Pollinations 后到再替换
 async function swapImage() {
   if (!curPoem || _busy) return;
   const seq = ++_seq;
@@ -317,20 +318,37 @@ async function swapImage() {
   const btn = els.stage.querySelector('.pc-swap-img');
   btn?.classList.add('is-busy');
   try {
-    // v4.1.8: 换图是用户主动行为, 给更长的预算 — 等 AI 图失败再降级, 比秒出 fallback 好
-    //   totalBudgetMs=10000(10s) 够 Pollinations AI 出图(3-5s)+ Picsum 兜底
-    //   首屏 drawNew 仍走默认 4000ms(进入要快); 贺卡页独立 6000ms(已有)
-    //   seed 用 Date.now() + 随机数, 与首图 seed 区分避免拿到同一张
-    const { img, url, source } = await fetchSceneImage(
-      curPoem, { seed: Date.now() + Math.floor(Math.random() * 1e6), totalBudgetMs: 10000 }
-    );
-    if (seq !== _seq) return;   // 期间又触发了换诗/换图，丢弃本次
-    curImg = img;
-    curImgUrl = url;
-    curSource = source;
-    updateImageOnly(url, source);
-    if (source === 'none') toast('配图暂不可用，再试一次吧');
-    else toast('已换一张配图');
+    // 用户主动换图, 预算给足 — 等 AI 出图值得
+    const seed = Date.now() + Math.floor(Math.random() * 1e6);
+    let picsumShown = false;
+    let pollinShown = false;
+    const finalResult = await fetchSceneImage(curPoem, {
+      seed,
+      totalBudgetMs: 10000,
+      onPicsum: (r) => {
+        if (seq !== _seq) return;
+        picsumShown = true;
+        curImg = r.img;
+        curImgUrl = r.url;
+        curSource = r.source;
+        updateImageOnly(r.url, r.source);
+      },
+      onPollinations: (r) => {
+        if (seq !== _seq) return;
+        pollinShown = true;
+        // 主题贴合优先 — 总是替换 Picsum 的图
+        curImg = r.img;
+        curImgUrl = r.url;
+        curSource = r.source;
+        updateImageOnly(r.url, r.source);
+      },
+    });
+    if (seq !== _seq) return;
+
+    // 反馈: 两张都成功提示"主题已贴合"; 仅 Picsum 提示"已换图"
+    if (pollinShown) toast('已换主题图');
+    else if (picsumShown) toast('已换一张配图');
+    else toast('配图暂不可用，再试一次吧');
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
     console.error(e);
@@ -343,7 +361,14 @@ async function swapImage() {
   }
 }
 
-// ── 核心：换一张（1 次 random + 1 次图片） ─────────────────
+// ── 核心：换一张（1 次 random + 双源并发图） ─────────────────
+// v4.4.0: 首屏毫秒级策略 — 诗词出现时间从「等图回来」提前到「拿到诗就显示」
+//   T+0ms    → showSkeleton() 骨架(无诗词)  [向后兼容, 老 fallback]
+//   T+0+ms  → 拿到诗 → renderPostcard() 同步拼完整卡片(诗词+字段+纯色图区)
+//            → fetchSceneImage 双源并发
+//   T+~1500ms → Picsum 回调 → updateImageOnly 局部替换 <img src>
+//   T+~5000ms → Pollinations 回调 → updateImageOnly 局部替换 <img src>
+//   失败/超时 → 不替换, 保留已出的图(或纯色占位)
 async function drawNew() {
   // ① 同步锁：任何来源的二次触发直接丢弃
   if (_busy) return;
@@ -370,7 +395,6 @@ async function drawNew() {
       poem = pickLocalPoem();
       fromApi = false;
       if (!poem) {
-        // 抛错走 catch + finally,确保 _busy 释放、UI 恢复
         throw new Error('LOCAL_LIB_NOT_READY');
       }
     } else {
@@ -387,24 +411,58 @@ async function drawNew() {
     if (seq !== _seq) return;   // 已有更新请求，丢弃本次
 
     if (!poem) {
-      // 抛错走 catch + finally,确保 _busy 释放、UI 恢复
       throw new Error('POEM_EMPTY');
     }
 
-    // ── 请求 2：按诗意意象取配图（唯一一次图片请求） ──
-    const { img, url, source } = await fetchSceneImage(poem, { seed: poem.id || seq });
-    if (seq !== _seq) return;   // 期间又点了，丢弃
-
+    // ── 拿到诗 → 同步拼完整卡片(诗词+字段+纯色图区背景) ──
+    //   这是 v4.4.0 的关键变化: 诗词不再等图回来才出现
     curPoem = poem;
-    curImg = img;
-    curImgUrl = url;
-    curSource = source;
-    renderPostcard(poem, url, source);
+    curImg = null;
+    curImgUrl = '';
+    curSource = 'none';
+    renderPostcard(poem, '', 'none');   // 空 url → 走 .postcard-media--empty 单色占位
+
+    // ── 请求 2：双源并发取图 ──
+    //   回调里 seq 校验: 期间又触发了换诗, 丢弃旧回调
+    //   回调里 updateImageOnly: 局部替换 <img src>, 不重建 .postcard-body
+    const finalResult = await fetchSceneImage(poem, {
+      seed: poem.id || seq,
+      totalBudgetMs: 4000,
+      onPicsum: (r) => {
+        if (seq !== _seq) return;
+        if (curPoem !== poem) return;
+        curImg = r.img;
+        curImgUrl = r.url;
+        curSource = r.source;
+        updateImageOnly(r.url, r.source);
+      },
+      onPollinations: (r) => {
+        if (seq !== _seq) return;
+        if (curPoem !== poem) return;
+        // Pollinations 优先级高于 Picsum(主题更贴合) — 但只在 Picsum 之后到时替换
+        if (curSource === 'Pollinations') return;   // 已是 Pollinations, 不替换
+        curImg = r.img;
+        curImgUrl = r.url;
+        curSource = r.source;
+        updateImageOnly(r.url, r.source);
+      },
+    });
+    if (seq !== _seq) return;
+
+    // 用最终结果覆盖 curSource(可能在 onPicsum/onPollinations 中已更新)
+    //   - 若两张都失败 finalResult.source='none', 保留卡片纯色占位
+    //   - 若 Pollinations 后到, curSource 已是 Pollinations, 不动
+    if (finalResult.source !== 'none') {
+      curImg = finalResult.img;
+      curImgUrl = finalResult.url;
+      curSource = finalResult.source;
+      if (!curImgUrl) updateImageOnly(finalResult.url, finalResult.source);
+    } else if (curSource === 'none') {
+      // 全失败: 给个空提示(图区已经是 .postcard-media--empty 单色)
+      if (els.srcNote) els.srcNote.textContent = '配图暂不可用（已用水墨底纹）';
+    }
 
     // v3.1 个性化记忆:成功渲染后写库(失败/取消不写)
-    //   history.push 内部做 normalizePoem,任何字段缺失都能容错
-    // v3.2.7 stats 双源:onDraw 累加 totalDraws/todayDraws;
-    //   朝代/意象 不在 onDraw 写入,从 favorites 实时算
     history?.push(poem);
     stats?.onDraw(poem, extractThemes(poem));
 
@@ -412,7 +470,6 @@ async function drawNew() {
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
     console.error(e);
-    // v3.2.6:不同错误给不同提示
     const msg = e?.message === 'LOCAL_LIB_NOT_READY'
       ? '本地诗词库尚未就绪，请稍候再试'
       : e?.message === 'POEM_EMPTY'
@@ -421,7 +478,6 @@ async function drawNew() {
     showError(msg);
     toast(msg);
   } finally {
-    // v3.2.6:无论 throw 还是 return,都确保 _busy 释放
     if (seq === _seq) {
       _busy = false;
       setBusyUI(false);

@@ -376,6 +376,12 @@ export function mountFestivalUI(storage, els) {
     loadImage();
   }
 
+  // v4.4.0: 与主页面 main.js#drawNew 同策略 — 双源并发渐进增强
+  //   boot 时卡片骨架已渲染(诗词+字段完整);本函数:
+  //     - 立即 fetchSceneImage 启动双源
+  //     - onPicsum: 局部更新 <img src>, 字段/分隔不重排
+  //     - onPollinations: 二次替换, 主题更贴合
+  //     - 失败/超时: 静默保留已出的图
   async function loadImage() {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
@@ -384,30 +390,50 @@ export function mountFestivalUI(storage, els) {
       ...entry.poem,
       imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
     };
-    // v4.1.6: 与主页面 main.js#drawNew 同流程 — fetchSceneImage 拿到 url + img
-    //   同步进入 loading 态(让用户看到 <img> 元素 + spinner)
-    //   拿到后切换到 ok 态(<img> 显示完整图);失败 → error 态(fallback)
+    // 同步进入 loading 态 — 卡片已有诗词, 图区显示 spinner + 临时 Picsum URL
+    //   boot() 已写过 render(), 这里只更新 imageStatus
     state.imageStatus = 'loading';
-    // 给一个临时 url 用于同步嵌 <img>(浏览器立刻开始加载, 显示 loading 视觉)
-    //   真实 url 由 fetchSceneImage 拿到后用 bgImg + url 重渲染
     state.imageUrl = `https://picsum.photos/seed/poem${state.poemId}/720/450`;
-    render();
     try {
-      const r = await fetchSceneImage(poemWithKeywords, { totalBudgetMs: 6000 });
-      if (r && r.img) {
-        state.bgImg = r.img;
-        state.imageUrl = r.url || state.imageUrl;
-        state.imageStatus = 'ok';
-        draftStore.save(stripForSave(state));
-      } else {
-        // fetchSceneImage 都失败: 进入 error 态,显示 fallback
+      const final = await fetchSceneImage(poemWithKeywords, {
+        totalBudgetMs: 6000,
+        onPicsum: (r) => {
+          // 若期间换了诗/节日, 丢弃旧回调
+          if (state.poemId !== entry.poem.id) return;
+          state.bgImg = r.img;
+          state.imageUrl = r.url;
+          state.imageStatus = 'ok';
+          // 局部更新 <img src>, 不重建 .postcard-body (v4.3.1 模式)
+          updatePostcardImage(r.url, r.source);
+          draftStore.save(stripForSave(state));
+        },
+        onPollinations: (r) => {
+          if (state.poemId !== entry.poem.id) return;
+          // Pollinations 主题更贴合, 总是替换
+          state.bgImg = r.img;
+          state.imageUrl = r.url;
+          state.imageStatus = 'ok';
+          updatePostcardImage(r.url, r.source);
+          draftStore.save(stripForSave(state));
+        },
+      });
+      if (state.poemId !== entry.poem.id) return;
+      // 全部失败: 进入 error 态,显示 fallback
+      if (!final || !final.img) {
         state.imageStatus = 'error';
+        render();
+      } else if (state.imageStatus !== 'ok') {
+        // 双源都失败但 Promise.allSettled 已 resolve — 理论上不会到这里, 兜底
+        state.imageStatus = 'error';
+        render();
       }
     } catch (e) {
       console.error('[festival] loadImage failed', e);
-      state.imageStatus = 'error';
+      if (state.poemId === entry.poem.id) {
+        state.imageStatus = 'error';
+        render();
+      }
     }
-    render();
   }
 
   // v4.3.0: 单独换图(参考主页面 main.js#swapImage)
