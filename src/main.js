@@ -556,8 +556,12 @@ function applyTheme(mode) {
   const isDark = mode === 'dark' || (mode === 'auto' && prefersDark);
   document.documentElement.classList.toggle('pc-dark', isDark);
   if (els.themeBtn) {
-    els.themeBtn.textContent = mode === 'auto' ? '自动' : (isDark ? '暗色' : '亮色');
-    els.themeBtn.title = `主题：${mode}（点击切换）`;
+    // v4.1.7: 用图标代替文字 — auto/sun/moon
+    const labelMap = { auto: '自动', light: '亮色', dark: '暗色' };
+    els.themeBtn.title = `主题：${labelMap[mode] || mode}（点击切换）`;
+    els.themeBtn.setAttribute('aria-label', `切换主题 · 当前 ${labelMap[mode] || mode}`);
+    // 切换图标 — 3 个 SVG 兄弟元素, CSS 控制显示
+    els.themeBtn.setAttribute('data-theme-mode', mode);
   }
 }
 function cycleTheme() {

@@ -638,6 +638,52 @@ body {
 }
 .pc-btn--header svg { display: block; }
 
+/* ============================================================
+ *  v4.1.7 主题切换按钮 — 纯图标(自动/太阳/月亮)
+ *  - .pc-btn--icon 圆形按钮, 只显示 1 个图标
+ *  - .pc-theme-icon 是 3 个 SVG 的容器, 通过 data-theme-mode 控制可见性
+ *  - 切换时 fade 动画, 让 auto 状态(屏幕追随系统)有一目了然的视觉反馈
+ * ============================================================ */
+.pc-btn--icon {
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  justify-content: center;
+}
+.pc-theme-icon {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+}
+.pc-theme-icon svg {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  transform: scale(.6) rotate(-30deg);
+  transition: opacity .25s ease, transform .25s ease;
+}
+/* auto 状态: 显示半圆(自动图标) */
+.pc-btn[data-theme-mode="auto"] .pc-theme-icon-auto {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+/* light 状态: 显示太阳 */
+.pc-btn[data-theme-mode="light"] .pc-theme-icon-sun {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+/* dark 状态: 显示月亮 */
+.pc-btn[data-theme-mode="dark"] .pc-theme-icon-moon {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+
 /* 按钮内 spinner（加载时显示） */
 .pc-btn-spinner {
   display: none;
