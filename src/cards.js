@@ -266,6 +266,32 @@ export function composeCard(poem, bgImg, hostEl, options = {}) {
     ctx.fillText(ln, centerX, y);
   }
 
+  // ── v4.3.1: 用户字段区与诗词正文之间的视觉分隔(.postcard-rule--fields)
+  //   与 styles.css .postcard-rule--fields 1:1 对齐: 双线(上下各 1px) + 中间朱砂点
+  //   仅在有任一用户字段 (recipient || message || sender) 时绘制, 与 .postcard-user-fields 一致
+  if (opt.hasOptions && (opt.recipient || opt.message || opt.sender)) {
+    y += Math.round(FONT_W * 0.044);   // 诗词 → 分隔线 间距(对应 CSS margin: 22px auto 18px 之上半)
+    const ruleW = Math.round(FONT_W * 0.148);   // 对应 CSS width: 64px (按 FONT_W=520 → 64)
+    const ruleHalfH = Math.round(FONT_W * 0.0029);  // 对应 CSS height: 3px (双线, 中间 1px gap)
+    const topY = y - ruleHalfH;
+    const botY = y + ruleHalfH;
+    ctx.strokeStyle = C.line;
+    ctx.lineWidth = Math.max(1, Math.round(FONT_W * 0.001));
+    ctx.beginPath();
+    ctx.moveTo(centerX - ruleW / 2, topY);
+    ctx.lineTo(centerX + ruleW / 2, topY);
+    ctx.moveTo(centerX - ruleW / 2, botY);
+    ctx.lineTo(centerX + ruleW / 2, botY);
+    ctx.stroke();
+    // 中间朱砂圆点
+    const dotR = Math.max(2, Math.round(FONT_W * 0.0048));
+    ctx.fillStyle = C.vermil;
+    ctx.beginPath();
+    ctx.arc(centerX, y, dotR, 0, Math.PI * 2);
+    ctx.fill();
+    y += Math.round(FONT_W * 0.04);   // 分隔线 → 字段 间距(对应 CSS margin-bottom: 18px 之下半)
+  }
+
   // ── v4.0 增量:送给 / 寄语(opt.hasOptions 时才绘制) ──
   if (opt.hasOptions) {
     const giftPx = Math.max(14, Math.round(FONT_W * 0.026));

@@ -413,6 +413,12 @@ export function mountFestivalUI(storage, els) {
   // v4.3.0: 单独换图(参考主页面 main.js#swapImage)
   //   复用当前诗词, 只换图 — 不动 state.poemId, 不动 state.dirty
   //   加 _busy / _swapSeq 锁防连击;busy 时按钮加 is-busy 类旋转
+  // v4.3.1: 不再 render() 临时图(避免「老图被刷掉」)
+  //   - 旧实现: 设 loading + render() → 重建 DOM → 老图消失 + 临时 Picsum 图开始下载
+  //              → fetchSceneImage 完成再 render() → 重建 DOM → 新 URL 触发下载
+  //   - 新实现: loading 期间只动 .is-busy class (按钮旋转反馈),
+  //              fetchSceneImage 完成后用 updatePostcardImage 局部更新 <img src>
+  //              → 老图保留到新图加载完成, 视觉无「被刷掉」
   let _busy = false;
   let _swapSeq = 0;
   async function onSwapImage() {
@@ -425,16 +431,13 @@ export function mountFestivalUI(storage, els) {
     _busy = true;
     const seq = ++_swapSeq;
     state.imageStatus = 'loading';
-    // v4.3.0: 换图是用户主动行为, 给更长预算 (与主页面一致 10000ms)
-    //   seed 用 Date.now() + 随机数, 避免和首图 seed 重合
-    const seed = Date.now() + Math.floor(Math.random() * 1e6);
-    state.imageUrl = `https://picsum.photos/seed/${seed}/720/450`;
-    render();
+    // 不再 render() 临时图 — 只用按钮 .is-busy 反馈 loading 态
     try {
       const poemWithKeywords = {
         ...entry.poem,
         imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
       };
+      const seed = Date.now() + Math.floor(Math.random() * 1e6);
       const r = await fetchSceneImage(poemWithKeywords, { seed, totalBudgetMs: 10000 });
       if (seq !== _swapSeq) return;   // 期间又触发了, 丢弃
       if (r && r.img) {
@@ -442,19 +445,48 @@ export function mountFestivalUI(storage, els) {
         state.imageUrl = r.url || state.imageUrl;
         state.imageStatus = 'ok';
         draftStore.save(stripForSave(state));
+        // 局部更新 <img src>, 不重建 .postcard-body 避免字段丢失/重排
+        updatePostcardImage(r.url, r.source);
         showToast('已换一张配图', 'success');
       } else {
         state.imageStatus = 'error';
+        render();
         showToast('配图暂不可用,请稍后再试', 'error');
       }
     } catch (e) {
       console.error('[festival] swapImage failed', e);
       state.imageStatus = 'error';
+      render();
       showToast('换图失败,请稍后再试', 'error');
     } finally {
       _busy = false;
       btn?.classList.remove('is-busy');
-      render();
+    }
+  }
+
+  // v4.3.1: 局部更新贺卡 .postcard-media 的 <img src> (与主页面 updateImageOnly 对齐)
+  //   避免 render() 全量重建 — 老图保留到新图加载,视觉上「不被刷掉」
+  function updatePostcardImage(url, source) {
+    const media = document.querySelector('#pc-festival-postcard .postcard-media');
+    if (!media) { render(); return; }
+    // 移除 loading tip / error fallback
+    const tip = media.querySelector('.postcard-media-loading-tip');
+    if (tip) tip.remove();
+    const fallback = media.querySelector('.postcard-media-fallback');
+    if (fallback) fallback.remove();
+    // 替换/创建 <img>
+    const old = media.querySelector('img');
+    if (old) old.remove();
+    if (url) {
+      const ni = document.createElement('img');
+      ni.alt = '诗意配图';
+      ni.crossOrigin = 'anonymous';
+      ni.referrerPolicy = 'no-referrer';
+      ni.src = url;
+      // 换图按钮是 media 唯一 .pc-swap-img 元素, <img> 插到它前面避免被覆盖
+      const swapBtn = media.querySelector('.pc-swap-img');
+      if (swapBtn) media.insertBefore(ni, swapBtn);
+      else media.appendChild(ni);
     }
   }
 
