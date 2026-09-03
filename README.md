@@ -1,7 +1,7 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-> **v4.4.0** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
+> **v4.5.0** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
@@ -9,6 +9,7 @@
 ## 功能
 
 - 🖼️ **一进页面就出片**（v4.4.0 双源并发）：自动取 1 首随机诗词 + **毫秒级渲染诗词卡片**（不等图）+ 异步双源并发（Picsum 1.5s 秒出 → Pollinations 3-5s 主题贴合）渐进增强替换，无需点击（默认走本地库，秒开）
+- 🛡️ **换图失败保留原图**（v4.5.0）：贺卡页换图时若 Picsum + Pollinations 全失败，**静默保留原有图片**，不打扰用户；首屏无图时才显示 fallback"意境暂不可用"
 - 🎨 **AI 意象配图**：从诗词提取意象生成 AI 提示词出图，配图贴着诗意；失败降级风景关键词图
 - 📮 **明信片版式**：横排诗词居中、大留白、细线分隔、朱砂小印
 - ⬇️ **导出 PNG**：Canvas 合成 **1080×1440**（3:4）竖版图，一键下载
@@ -237,6 +238,27 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.5.0 (2026-09-03) — 贺卡页图片加载对齐主页 + 换图失败保留原图
+
+把贺卡页 `onSwapImage` / `loadImage` 完全对齐主页 `swapImage` 的双源并发模式，去掉 v4.1.6 的"意境加载中"spinner 提示，并修复换图失败的体验。
+
+**问题**：
+- 贺卡页 swap 走 `await fetchSceneImage` 串行结果 → 没有 onPicsum/onPollinations 回调双源并发
+- 贺卡页在加载中嵌 `.postcard-media-loading-tip`（spinner + "意境加载中"文案）→ 与主页不一致，主页只走 button `.is-busy` 旋转
+- 换图失败时 `state.imageStatus='error' + render()` → 把原本的老图也清掉，换成 fallback "意境暂不可用"，用户感知为「我的图没了」
+
+**修复**：
+- **`onSwapImage` 复用主页模式**：用 `fetchSceneImage({ onPicsum, onPollinations, ... })` 回调模式双源并发，谁先到谁先替换 `updatePostcardImage(url, source)` 局部更新 `<img src>`（v4.3.1 模式），字段/分隔 0 重排。
+- **失败保留原图**：调用 swap 前记录 `hadImg = !!state.bgImg`；全失败时若 hadImg 为 true 则**不动 UI 静默保留原图 + toast 提示**（"配图暂不可用，已保留原图"）；hadImg 为 false（首屏）才显示 fallback。
+- **去掉 spinner / 加载文案**：`.postcard-media-loading-tip` + `.postcard-media-loading-spinner` + `.postcard-media-img--loading` 三个 class 全部从 `styles.css` 移除，`loadingTipHtml()` 函数保留但不再调用。loading 状态由 button `.is-busy` 旋转反馈（与主页一致）。
+- **`render()` 简化的 imageStatus 分支**：`'ok'` 嵌 `<img>`；`'error'` 嵌 fallback；`'loading'/'idle'` 嵌临时 `<img>`（浏览器自己 loading 视觉）等待回调替换。
+- **`updatePostcardImage` 简化**：不再清 `.postcard-media-loading-tip`（已废弃），保留 fallback 清理（全失败时 fallback 不该保留）。
+- **`loadImage` 失败保留原图**：与 `onSwapImage` 一致语义 — 切节日/换诗时若已有图则静默保留；首屏无图才显示 fallback。
+
+**架构红线 0 破**：零依赖 + 单 HTML + 原生 ESM + 「每次只发 2 个请求」不变；`composeCard` 字节级不变；与主页语义完全对齐。
+
+**测试**：`scripts/test-images-v44.mjs` 14/14 仍全绿（双源契约 0 破）；`node --check` 全过。
 
 ### v4.4.0 (2026-09-03) — 双源并发渐进增强
 

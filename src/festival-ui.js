@@ -186,18 +186,19 @@ export function mountFestivalUI(storage, els) {
 
     // ③ 预览(明信片)
     if (els.card) {
-      // v4.1.6: 与主页面 main.js#drawNew 走同一流程 — 进入即嵌 <img>
+      // v4.5.0: 与主页面 main.js#drawNew 走同一流程 — 进入即嵌 <img>
       //   - state.imageStatus='ok' + bgImg → 直接嵌 <img src>(已 CORS 化,导出可用)
-      //   - state.imageStatus='loading' + imageUrl → 嵌 <img> + 加载中文案
       //   - state.imageStatus='error' → 嵌 fallbackHtml("意境暂不可用")
-      //   - state.imageStatus='idle' → 嵌 skeletonHtml(进入即有结构)
+      //   - state.imageStatus='loading' / 'idle' → 嵌 <img> 占位(等 fetchSceneImage 回调替换)
+      //   v4.5.0 起去掉 loading-tip spinner — 与主页一致, 仅按钮 .is-busy 旋转反馈
       let mediaInner = '';
       if (state.imageStatus === 'ok' && state.bgImg) {
         mediaInner = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">`;
-      } else if (state.imageStatus === 'loading' && state.imageUrl) {
-        mediaInner = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer" class="postcard-media-img--loading">${loadingTipHtml()}`;
       } else if (state.imageStatus === 'error') {
         mediaInner = fallbackHtml();
+      } else if (state.imageUrl) {
+        // loading / idle 状态: 嵌临时 <img>, 等 fetchSceneImage 回调 updatePostcardImage 替换
+        mediaInner = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">`;
       }
       // idle / loading 但没 url(理论不应发生) → 走 skeletonHtml 兜底
       els.card.innerHTML = (state.imageStatus !== 'idle')
@@ -376,12 +377,12 @@ export function mountFestivalUI(storage, els) {
     loadImage();
   }
 
-  // v4.4.0: 与主页面 main.js#drawNew 同策略 — 双源并发渐进增强
+  // v4.5.0: 与主页面 main.js#drawNew 同策略 — 双源并发渐进增强
   //   boot 时卡片骨架已渲染(诗词+字段完整);本函数:
   //     - 立即 fetchSceneImage 启动双源
   //     - onPicsum: 局部更新 <img src>, 字段/分隔不重排
   //     - onPollinations: 二次替换, 主题更贴合
-  //     - 失败/超时: 静默保留已出的图
+  //     - 失败/超时: 与 onSwapImage 一致 — 已有图则静默保留, 无图才显示 fallback
   async function loadImage() {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
@@ -390,26 +391,25 @@ export function mountFestivalUI(storage, els) {
       ...entry.poem,
       imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
     };
-    // 同步进入 loading 态 — 卡片已有诗词, 图区显示 spinner + 临时 Picsum URL
-    //   boot() 已写过 render(), 这里只更新 imageStatus
+    // 同步进入 loading 态 — boot() 已写过 render(), 这里只更新 imageStatus
+    //   v4.5.0 起去掉 loading-tip spinner;卡片显示临时 picsum URL 的 <img>,
+    //   等 fetchSceneImage 回调 updatePostcardImage 替换
     state.imageStatus = 'loading';
     state.imageUrl = `https://picsum.photos/seed/poem${state.poemId}/720/450`;
+    const hadImg = !!state.bgImg;   // 首屏通常是 false; 切节日若上次图还在则为 true
     try {
       const final = await fetchSceneImage(poemWithKeywords, {
         totalBudgetMs: 6000,
         onPicsum: (r) => {
-          // 若期间换了诗/节日, 丢弃旧回调
           if (state.poemId !== entry.poem.id) return;
           state.bgImg = r.img;
           state.imageUrl = r.url;
           state.imageStatus = 'ok';
-          // 局部更新 <img src>, 不重建 .postcard-body (v4.3.1 模式)
           updatePostcardImage(r.url, r.source);
           draftStore.save(stripForSave(state));
         },
         onPollinations: (r) => {
           if (state.poemId !== entry.poem.id) return;
-          // Pollinations 主题更贴合, 总是替换
           state.bgImg = r.img;
           state.imageUrl = r.url;
           state.imageStatus = 'ok';
@@ -418,33 +418,37 @@ export function mountFestivalUI(storage, els) {
         },
       });
       if (state.poemId !== entry.poem.id) return;
-      // 全部失败: 进入 error 态,显示 fallback
+      // 全失败: 已有图则静默保留; 无图才显示 fallback
       if (!final || !final.img) {
-        state.imageStatus = 'error';
-        render();
+        if (hadImg) {
+          // 已有的图保留, 静默(主页面也是静默, 不打扰用户)
+        } else {
+          state.imageStatus = 'error';
+          render();
+        }
       } else if (state.imageStatus !== 'ok') {
-        // 双源都失败但 Promise.allSettled 已 resolve — 理论上不会到这里, 兜底
-        state.imageStatus = 'error';
-        render();
+        // 兜底 — 理论上不会到这里
+        if (!hadImg) {
+          state.imageStatus = 'error';
+          render();
+        }
       }
     } catch (e) {
       console.error('[festival] loadImage failed', e);
-      if (state.poemId === entry.poem.id) {
+      if (state.poemId === entry.poem.id && !hadImg) {
         state.imageStatus = 'error';
         render();
       }
     }
   }
 
-  // v4.3.0: 单独换图(参考主页面 main.js#swapImage)
-  //   复用当前诗词, 只换图 — 不动 state.poemId, 不动 state.dirty
-  //   加 _busy / _swapSeq 锁防连击;busy 时按钮加 is-busy 类旋转
-  // v4.3.1: 不再 render() 临时图(避免「老图被刷掉」)
-  //   - 旧实现: 设 loading + render() → 重建 DOM → 老图消失 + 临时 Picsum 图开始下载
-  //              → fetchSceneImage 完成再 render() → 重建 DOM → 新 URL 触发下载
-  //   - 新实现: loading 期间只动 .is-busy class (按钮旋转反馈),
-  //              fetchSceneImage 完成后用 updatePostcardImage 局部更新 <img src>
-  //              → 老图保留到新图加载完成, 视觉无「被刷掉」
+  // v4.5.0: 复用主页 main.js#swapImage 模式 — 双源并发渐进增强 + 失败保留原图
+  //   与主页语义对齐:
+  //     · 复用 fetchSceneImage 的 onPicsum/onPollinations 回调, 谁先到谁先替换
+  //     · 全失败时若原本就有图(state.bgImg), 静默保留原图 + toast 提示
+  //     · 全失败且原本无图, 才显示 fallbackHtml("意境暂不可用")
+  //   不再显示加载中 spinner / 文案 — 按钮 .is-busy 旋转反馈即可
+  //   不再 render() 全卡重建 — updatePostcardImage 局部替换 <img src>
   let _busy = false;
   let _swapSeq = 0;
   async function onSwapImage() {
@@ -456,34 +460,63 @@ export function mountFestivalUI(storage, els) {
     btn?.classList.add('is-busy');
     _busy = true;
     const seq = ++_swapSeq;
-    state.imageStatus = 'loading';
-    // 不再 render() 临时图 — 只用按钮 .is-busy 反馈 loading 态
+    const hadImg = !!state.bgImg;   // 换图前是否已有图 — 决定失败行为
     try {
       const poemWithKeywords = {
         ...entry.poem,
         imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
       };
-      const seed = Date.now() + Math.floor(Math.random() * 1e6);
-      const r = await fetchSceneImage(poemWithKeywords, { seed, totalBudgetMs: 10000 });
-      if (seq !== _swapSeq) return;   // 期间又触发了, 丢弃
-      if (r && r.img) {
-        state.bgImg = r.img;
-        state.imageUrl = r.url || state.imageUrl;
-        state.imageStatus = 'ok';
-        draftStore.save(stripForSave(state));
-        // 局部更新 <img src>, 不重建 .postcard-body 避免字段丢失/重排
-        updatePostcardImage(r.url, r.source);
-        showToast('已换一张配图', 'success');
-      } else {
-        state.imageStatus = 'error';
-        render();
-        showToast('配图暂不可用,请稍后再试', 'error');
+      let picsumShown = false;
+      let pollinShown = false;
+      const finalResult = await fetchSceneImage(poemWithKeywords, {
+        seed: Date.now() + Math.floor(Math.random() * 1e6),
+        totalBudgetMs: 10000,
+        onPicsum: (r) => {
+          if (seq !== _swapSeq) return;
+          picsumShown = true;
+          state.bgImg = r.img;
+          state.imageUrl = r.url;
+          state.imageStatus = 'ok';
+          updatePostcardImage(r.url, r.source);
+          draftStore.save(stripForSave(state));
+        },
+        onPollinations: (r) => {
+          if (seq !== _swapSeq) return;
+          pollinShown = true;
+          // 主题贴合, 总是替换 Picsum 的图
+          state.bgImg = r.img;
+          state.imageUrl = r.url;
+          state.imageStatus = 'ok';
+          updatePostcardImage(r.url, r.source);
+          draftStore.save(stripForSave(state));
+        },
+      });
+      if (seq !== _swapSeq) return;
+
+      // 反馈 toast — 与主页语义一致
+      if (pollinShown) showToast('已换主题图', 'success');
+      else if (picsumShown) showToast('已换一张配图', 'success');
+      else {
+        // 全失败: 保留原图(若有), 仅 toast 提示
+        if (hadImg) {
+          showToast('配图暂不可用，已保留原图', 'error');
+        } else {
+          // 原本无图 — 走 fallback "意境暂不可用"
+          state.imageStatus = 'error';
+          render();
+          showToast('配图暂不可用，请稍后重试', 'error');
+        }
       }
     } catch (e) {
       console.error('[festival] swapImage failed', e);
-      state.imageStatus = 'error';
-      render();
-      showToast('换图失败,请稍后再试', 'error');
+      // 异常: 同样保留原图(若有)
+      if (hadImg) {
+        showToast('换图失败，已保留原图', 'error');
+      } else {
+        state.imageStatus = 'error';
+        render();
+        showToast('换图失败，请稍后重试', 'error');
+      }
     } finally {
       _busy = false;
       btn?.classList.remove('is-busy');
@@ -491,13 +524,11 @@ export function mountFestivalUI(storage, els) {
   }
 
   // v4.3.1: 局部更新贺卡 .postcard-media 的 <img src> (与主页面 updateImageOnly 对齐)
-  //   避免 render() 全量重建 — 老图保留到新图加载,视觉上「不被刷掉」
+  //   v4.5.0: 移除 loading-tip 清理(loading-tip 已废弃);保留 fallback 清理(全失败时 fallback 不该保留)
   function updatePostcardImage(url, source) {
     const media = document.querySelector('#pc-festival-postcard .postcard-media');
     if (!media) { render(); return; }
-    // 移除 loading tip / error fallback
-    const tip = media.querySelector('.postcard-media-loading-tip');
-    if (tip) tip.remove();
+    // 移除 error fallback(v4.5.0: loading-tip 已废弃, 不再清理)
     const fallback = media.querySelector('.postcard-media-fallback');
     if (fallback) fallback.remove();
     // 替换/创建 <img>
