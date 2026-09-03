@@ -396,7 +396,9 @@ export function mountFestivalUI(storage, els) {
     //   等 fetchSceneImage 回调 updatePostcardImage 替换
     state.imageStatus = 'loading';
     state.imageUrl = `https://picsum.photos/seed/poem${state.poemId}/720/450`;
-    const hadImg = !!state.bgImg;   // 首屏通常是 false; 切节日若上次图还在则为 true
+    const hadImg = !!state.bgImg;     // 首屏通常是 false; 切节日若上次图还在则为 true
+    const prevBgImg = state.bgImg;    // v4.5.1: 备份原图, 全失败时回填
+    const prevImageUrl = state.imageUrl;
     try {
       const final = await fetchSceneImage(poemWithKeywords, {
         totalBudgetMs: 6000,
@@ -405,7 +407,8 @@ export function mountFestivalUI(storage, els) {
           state.bgImg = r.img;
           state.imageUrl = r.url;
           state.imageStatus = 'ok';
-          updatePostcardImage(r.url, r.source);
+          // v4.5.1: 传 r.img 复用 URL 避免重新加载
+          updatePostcardImage(r.url, r.source, r.img);
           draftStore.save(stripForSave(state));
         },
         onPollinations: (r) => {
@@ -413,31 +416,39 @@ export function mountFestivalUI(storage, els) {
           state.bgImg = r.img;
           state.imageUrl = r.url;
           state.imageStatus = 'ok';
-          updatePostcardImage(r.url, r.source);
+          updatePostcardImage(r.url, r.source, r.img);
           draftStore.save(stripForSave(state));
         },
       });
       if (state.poemId !== entry.poem.id) return;
-      // 全失败: 已有图则静默保留; 无图才显示 fallback
+      // v4.5.1: 全失败 — 已有图则静默回填保留(不动 DOM), 无图才显示 fallback
       if (!final || !final.img) {
-        if (hadImg) {
-          // 已有的图保留, 静默(主页面也是静默, 不打扰用户)
+        if (hadImg && prevBgImg) {
+          // 已有图保留 — 恢复 bgImg / imageUrl(回调中可能已改为 Picsum 但不准确)
+          state.bgImg = prevBgImg;
+          state.imageUrl = prevImageUrl;
+          state.imageStatus = 'ok';
         } else {
           state.imageStatus = 'error';
           render();
         }
-      } else if (state.imageStatus !== 'ok') {
+      } else if (state.imageStatus !== 'ok' && !hadImg) {
         // 兜底 — 理论上不会到这里
-        if (!hadImg) {
-          state.imageStatus = 'error';
-          render();
-        }
+        state.imageStatus = 'error';
+        render();
       }
     } catch (e) {
       console.error('[festival] loadImage failed', e);
-      if (state.poemId === entry.poem.id && !hadImg) {
-        state.imageStatus = 'error';
-        render();
+      if (state.poemId === entry.poem.id) {
+        if (hadImg && prevBgImg) {
+          // 已有图保留
+          state.bgImg = prevBgImg;
+          state.imageUrl = prevImageUrl;
+          state.imageStatus = 'ok';
+        } else {
+          state.imageStatus = 'error';
+          render();
+        }
       }
     }
   }
@@ -461,6 +472,8 @@ export function mountFestivalUI(storage, els) {
     _busy = true;
     const seq = ++_swapSeq;
     const hadImg = !!state.bgImg;   // 换图前是否已有图 — 决定失败行为
+    const prevBgImg = state.bgImg;  // v4.5.1: 备份原图, 全失败时保留显示
+    const prevImageUrl = state.imageUrl;
     try {
       const poemWithKeywords = {
         ...entry.poem,
@@ -477,7 +490,8 @@ export function mountFestivalUI(storage, els) {
           state.bgImg = r.img;
           state.imageUrl = r.url;
           state.imageStatus = 'ok';
-          updatePostcardImage(r.url, r.source);
+          // v4.5.1: 传 r.img — updatePostcardImage 复用 URL 避免浏览器重新加载
+          updatePostcardImage(r.url, r.source, r.img);
           draftStore.save(stripForSave(state));
         },
         onPollinations: (r) => {
@@ -487,11 +501,26 @@ export function mountFestivalUI(storage, els) {
           state.bgImg = r.img;
           state.imageUrl = r.url;
           state.imageStatus = 'ok';
-          updatePostcardImage(r.url, r.source);
+          updatePostcardImage(r.url, r.source, r.img);
           draftStore.save(stripForSave(state));
         },
       });
       if (seq !== _swapSeq) return;
+
+      // v4.5.1: 全失败 — 已有图则静默保留(不动 DOM);无图才显示 fallback
+      if (!pollinShown && !picsumShown && hadImg && prevBgImg) {
+        // 静默保留 — bgImg / imageUrl 保持原值, DOM 不动
+        showToast('配图暂不可用，已保留原图', 'error');
+      } else if (!pollinShown && !picsumShown) {
+        // 原本无图 — 走 fallback "意境暂不可用"
+        state.imageStatus = 'error';
+        render();
+        showToast('配图暂不可用，请稍后重试', 'error');
+      } else if (pollinShown) {
+        showToast('已换主题图', 'success');
+      } else if (picsumShown) {
+        showToast('已换一张配图', 'success');
+      }
 
       // 反馈 toast — 与主页语义一致
       if (pollinShown) showToast('已换主题图', 'success');
@@ -509,7 +538,7 @@ export function mountFestivalUI(storage, els) {
       }
     } catch (e) {
       console.error('[festival] swapImage failed', e);
-      // 异常: 同样保留原图(若有)
+      // v4.5.1: 异常 — 同样保留原图(若有);state.bgImg/imageUrl 已不变
       if (hadImg) {
         showToast('换图失败，已保留原图', 'error');
       } else {
@@ -525,26 +554,41 @@ export function mountFestivalUI(storage, els) {
 
   // v4.3.1: 局部更新贺卡 .postcard-media 的 <img src> (与主页面 updateImageOnly 对齐)
   //   v4.5.0: 移除 loading-tip 清理(loading-tip 已废弃);保留 fallback 清理(全失败时 fallback 不该保留)
-  function updatePostcardImage(url, source) {
+  //   v4.5.1: 接受可选 readyImg(已 CORS 加载完成的 HTMLImageElement);
+  //     关键修复 — 新图节点插入后才移除老图, 杜绝 "换图反而无图" 闪屏
+  function updatePostcardImage(url, source, readyImg) {
     const media = document.querySelector('#pc-festival-postcard .postcard-media');
     if (!media) { render(); return; }
-    // 移除 error fallback(v4.5.0: loading-tip 已废弃, 不再清理)
+    // 移除 error fallback(全失败时 fallback 不该保留)
     const fallback = media.querySelector('.postcard-media-fallback');
     if (fallback) fallback.remove();
-    // 替换/创建 <img>
     const old = media.querySelector('img');
-    if (old) old.remove();
-    if (url) {
+    // v4.5.1: 先插入新节点再移除老节点 — 保证视觉上始终有一张图
+    let appended = false;
+    if (readyImg) {
+      // 已 loaded 的 img, 设同 src 浏览器命中缓存
+      const ni = document.createElement('img');
+      ni.alt = '诗意配图';
+      ni.crossOrigin = 'anonymous';
+      ni.referrerPolicy = 'no-referrer';
+      ni.src = readyImg.src;
+      const swapBtn = media.querySelector('.pc-swap-img');
+      if (swapBtn) media.insertBefore(ni, swapBtn);
+      else media.appendChild(ni);
+      appended = true;
+    } else if (url) {
       const ni = document.createElement('img');
       ni.alt = '诗意配图';
       ni.crossOrigin = 'anonymous';
       ni.referrerPolicy = 'no-referrer';
       ni.src = url;
-      // 换图按钮是 media 唯一 .pc-swap-img 元素, <img> 插到它前面避免被覆盖
       const swapBtn = media.querySelector('.pc-swap-img');
       if (swapBtn) media.insertBefore(ni, swapBtn);
       else media.appendChild(ni);
+      appended = true;
     }
+    // 新节点就位后才清老图
+    if (appended && old) old.remove();
   }
 
   async function onDownload() {

@@ -281,21 +281,49 @@ function showError(msg) {
 
 // ── 只换图（保留诗词） ───────────────────────────────────
 // 仅替换配图区 DOM，不动诗文，避免整卡重播入场动画。
-function updateImageOnly(url, source) {
+// v4.5.1: 接受可选的 readyImg(已 CORS 加载完成的 HTMLImageElement)
+//   优先级: readyImg > url
+//   - 传 readyImg: 直接 appendChild(reusable img), 不触发浏览器重新加载, 0 闪屏
+//   - 只传 url: 创建新 <img> + 浏览器加载 (异步, 有短暂空白)
+//   - 都不传: 渲染 .postcard-media--empty 占位
+function updateImageOnly(url, source, readyImg) {
   const media = els.stage.querySelector('.postcard-media');
   if (!media) { renderPostcard(curPoem, url, source); return; }
+  // v4.5.1: 关键修复 — 新图到位前不销毁老图
+  //   先创建新节点(若已 readyImg, 直接 clone 后 append; 老图等新节点插入后再 remove)
+  //   保证视觉上始终有一张图, 不会 "换图反而无图"
   const old = media.querySelector('img');
-  if (old) old.remove();
   const empty = media.querySelector('.postcard-media--empty');
-  if (empty) empty.remove();
-  if (url) {
+  let appended = false;
+  if (readyImg) {
+    // 已加载完成的 img, 可直接插入 DOM (浏览器复用 decoded 数据)
+    // 注意: readyImg 来自 fetchSceneImage, 已是 crossOrigin='anonymous' 加载完的 Image
+    // 直接 appendChild 会把同一节点挪进 DOM — 但 readyImg 在 fetchSceneImage 之外
+    // 没有继续被引用, 所以可以被重用;若 caller 后面还想要它, 应该传 clone
+    const ni = document.createElement('img');
+    ni.alt = '诗意配图';
+    ni.crossOrigin = 'anonymous';
+    ni.referrerPolicy = 'no-referrer';
+    ni.src = readyImg.src;       // 复用 url, 浏览器命中缓存(同 url 已 decoded)→ 同步完成
+    media.appendChild(ni);        // 插入新图
+    appended = true;
+  } else if (url) {
     const ni = document.createElement('img');
     ni.alt = '诗意配图';
     ni.crossOrigin = 'anonymous';
     ni.referrerPolicy = 'no-referrer';
     ni.src = url;
     media.appendChild(ni);
-  } else {
+    appended = true;
+  }
+  // 新图就位后才清老图 — 杜绝 "换图瞬间空白"
+  if (appended) {
+    if (old) old.remove();
+    if (empty) empty.remove();
+  } else if (!url && !readyImg) {
+    // 既没 url 也没 img — 走空态
+    if (old) old.remove();
+    if (empty) empty.remove();
     const d = document.createElement('div');
     d.className = 'postcard-media--empty';
     media.appendChild(d);
@@ -309,6 +337,10 @@ function updateImageOnly(url, source) {
 
 // 单独换图：复用当前诗词，换新 seed 重新取配图；遵守请求纪律（_busy / _seq）。
 // v4.4.0: 与 drawNew 同样走双源并发渐进增强 — Picsum 先到先替换, Pollinations 后到再替换
+// v4.5.1: 关键修复 —
+//   · 双源回调里 seq 校验不通过 → return (丢弃旧回调) — 但**不动 DOM**, 保留原图
+//   · 全失败 → 不动 DOM, 保留原图 + toast "已保留原图"
+//   · updateImageOnly 接受 r.img (已 loaded), 直接复用 URL 避免重新加载
 async function swapImage() {
   if (!curPoem || _busy) return;
   const seq = ++_seq;
@@ -317,8 +349,8 @@ async function swapImage() {
   _busy = true;
   const btn = els.stage.querySelector('.pc-swap-img');
   btn?.classList.add('is-busy');
+  const hadImg = !!curImg;       // v4.5.1: 换图前是否已有图, 决定失败行为
   try {
-    // 用户主动换图, 预算给足 — 等 AI 出图值得
     const seed = Date.now() + Math.floor(Math.random() * 1e6);
     let picsumShown = false;
     let pollinShown = false;
@@ -326,12 +358,14 @@ async function swapImage() {
       seed,
       totalBudgetMs: 10000,
       onPicsum: (r) => {
+        // v4.5.1: seq 校验不通过 = 期间又触发了 swap/drawNew, 静默丢弃,
+        //   不动 DOM (避免清掉新一次的图) — 用户的当前最新视图由新 seq 的回调负责
         if (seq !== _seq) return;
         picsumShown = true;
         curImg = r.img;
         curImgUrl = r.url;
         curSource = r.source;
-        updateImageOnly(r.url, r.source);
+        updateImageOnly(r.url, r.source, r.img);
       },
       onPollinations: (r) => {
         if (seq !== _seq) return;
@@ -340,19 +374,25 @@ async function swapImage() {
         curImg = r.img;
         curImgUrl = r.url;
         curSource = r.source;
-        updateImageOnly(r.url, r.source);
+        updateImageOnly(r.url, r.source, r.img);
       },
     });
     if (seq !== _seq) return;
 
-    // 反馈: 两张都成功提示"主题已贴合"; 仅 Picsum 提示"已换图"
+    // 反馈: 两张都成功提示"主题已贴合"; 仅 Picsum 提示"已换图"; 全失败保留原图
     if (pollinShown) toast('已换主题图');
     else if (picsumShown) toast('已换一张配图');
-    else toast('配图暂不可用，再试一次吧');
+    else {
+      // v4.5.1: 全失败 — 保留原图
+      if (hadImg) toast('配图暂不可用，已保留原图');
+      else toast('配图暂不可用，请稍后再试');
+    }
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
     console.error(e);
-    toast('换图失败，请稍后重试');
+    // v4.5.1: 异常 — 同样保留原图(若有)
+    if (hadImg) toast('换图失败，已保留原图');
+    else toast('换图失败，请稍后重试');
   } finally {
     if (seq === _seq) {
       _busy = false;
@@ -416,6 +456,11 @@ async function drawNew() {
 
     // ── 拿到诗 → 同步拼完整卡片(诗词+字段+纯色图区背景) ──
     //   这是 v4.4.0 的关键变化: 诗词不再等图回来才出现
+    //   v4.5.1: 首屏(初次进入或从未有图)走空 url → 单色占位; 若用户连续换诗,
+    //     上一张的 curImg 保留作 hadImg, fetchSceneImage 失败时回退用旧 img
+    const hadImg = !!curImg;
+    const prevImg = curImg;          // 备份旧 img, 全失败时保留显示
+    const prevImgUrl = curImgUrl;
     curPoem = poem;
     curImg = null;
     curImgUrl = '';
@@ -423,8 +468,8 @@ async function drawNew() {
     renderPostcard(poem, '', 'none');   // 空 url → 走 .postcard-media--empty 单色占位
 
     // ── 请求 2：双源并发取图 ──
-    //   回调里 seq 校验: 期间又触发了换诗, 丢弃旧回调
-    //   回调里 updateImageOnly: 局部替换 <img src>, 不重建 .postcard-body
+    //   回调里 seq 校验: 期间又触发了换诗, 丢弃旧回调(不动 DOM, 由新 seq 负责)
+    //   v4.5.1: 回调传 r.img (已 loaded), updateImageOnly 复用 URL 避免重新加载
     const finalResult = await fetchSceneImage(poem, {
       seed: poem.id || seq,
       totalBudgetMs: 4000,
@@ -434,7 +479,7 @@ async function drawNew() {
         curImg = r.img;
         curImgUrl = r.url;
         curSource = r.source;
-        updateImageOnly(r.url, r.source);
+        updateImageOnly(r.url, r.source, r.img);
       },
       onPollinations: (r) => {
         if (seq !== _seq) return;
@@ -444,21 +489,21 @@ async function drawNew() {
         curImg = r.img;
         curImgUrl = r.url;
         curSource = r.source;
-        updateImageOnly(r.url, r.source);
+        updateImageOnly(r.url, r.source, r.img);
       },
     });
     if (seq !== _seq) return;
 
     // 用最终结果覆盖 curSource(可能在 onPicsum/onPollinations 中已更新)
-    //   - 若两张都失败 finalResult.source='none', 保留卡片纯色占位
+    //   - 若两张都失败: 上面 hadImg 块已处理保留原图
     //   - 若 Pollinations 后到, curSource 已是 Pollinations, 不动
     if (finalResult.source !== 'none') {
       curImg = finalResult.img;
       curImgUrl = finalResult.url;
       curSource = finalResult.source;
-      if (!curImgUrl) updateImageOnly(finalResult.url, finalResult.source);
-    } else if (curSource === 'none') {
-      // 全失败: 给个空提示(图区已经是 .postcard-media--empty 单色)
+    }
+    // 全失败且 hadImg=false: 图区保留单色占位, 给个提示
+    if (finalResult.source === 'none' && !hadImg) {
       if (els.srcNote) els.srcNote.textContent = '配图暂不可用（已用水墨底纹）';
     }
 
