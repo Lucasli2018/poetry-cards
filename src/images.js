@@ -233,23 +233,24 @@ function picsumUrl(opts = {}) {
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  // v4.1.2: 调宽总预算 — Pollinations 实测 3-5s 出图, 旧 5.5s 总预算 + 3.5s 单源 timeout 太短
-  //   单源 AI 提到 6s, 总预算 10s, 保证常规网络 90%+ 命中
-  const totalBudget = Math.max(4000, opts.totalBudgetMs || 10000);
+  // v4.1.3: Picsum 主源(秒出,稳定)→ Pollinations 备源
+  //   原因: Pollinations 实际 3-5s 出图, 用户等不及
+  //   Picsum 虽无主题匹配,但稳定秒出,作为主源对"进入即有图"体验至关重要
+  const totalBudget = Math.max(2000, opts.totalBudgetMs || 4000);
   const t0 = Date.now();
-  const remain = () => Math.max(1000, totalBudget - (Date.now() - t0));
+  const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
 
-  // ① Pollinations AI(按诗意生成,最贴合)
-  const aiUrl = pollinationsUrl(poem, opts);
-  let img = await loadImage(aiUrl, Math.min(AI_TIMEOUT_MS, remain()));
-  if (img) return { img, url: aiUrl, source: 'Pollinations' };
-
-  // ② Picsum 兜底(几乎秒出,稳定)
+  // ① Picsum 主源(seed 稳定,1s 内必出)
   const pUrl = picsumUrl(opts);
-  img = await loadImage(pUrl, Math.min(3000, remain()));
+  let img = await loadImage(pUrl, Math.min(1500, remain()));
   if (img) return { img, url: pUrl, source: 'Picsum' };
 
-  // ③ 都失败：返回 null,由调用方用 CSS 渐变兜底
+  // ② Pollinations 备源(主题贴合,但慢)
+  const aiUrl = pollinationsUrl(poem, opts);
+  img = await loadImage(aiUrl, Math.min(2000, remain()));
+  if (img) return { img, url: aiUrl, source: 'Pollinations' };
+
+  // ③ 都失败：返回 null, 由调用方保留诗意渐变占位
   return { img: null, url: null, source: 'none' };
 }
 
