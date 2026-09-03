@@ -583,6 +583,7 @@ body {
   border-radius: var(--r-btn);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
+  text-decoration: none;   /* v4.1.6: 首页贺卡 <a> 也带 .pc-btn, 兜底去掉浏览器默认下划线 */
   transition: transform .18s ease, border-color .18s ease, color .18s ease,
               background-color .18s ease, box-shadow .18s ease;
 }
@@ -1464,4 +1465,54 @@ body {
   letter-spacing: 0.15em;
   font-size: 13px;
   opacity: 0.7;
+}
+
+/* ============================================================
+ *  v4.1.6 贺卡页加载中提示 — 解决"图片没加载也没 loading 提示"
+ *  方案: <img src> 同步嵌入, 浏览器自己负责 loading 视觉
+ *       再叠一层自定义 spinner + 文案, 加强反馈
+ *  - .postcard-media-loading-tip 绝对定位在 .postcard-media 中下方
+ *  - 仅在 imageStatus === 'loading' 时显示
+ * ============================================================ */
+.postcard-media {
+  position: relative;          /* v4.1.6: 让 .postcard-media-loading-tip 能绝对定位 */
+}
+.postcard-media-img--loading {
+  /* loading 期间 img 透明度降低, 让 loading 提示更明显 */
+  opacity: 0.4;
+  transition: opacity .3s ease;
+}
+.postcard-media-loading-tip {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: rgba(253, 252, 249, 0.92);     /* 米白半透 */
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-family: var(--font-serif, 'Songti SC', 'STSong', serif);
+  font-size: 13px;
+  color: var(--ink);
+  letter-spacing: 0.12em;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;        /* 不阻挡下面图片的点击 */
+  z-index: 2;
+}
+.pc-dark .postcard-media-loading-tip {
+  background: rgba(35, 33, 32, 0.92);
+  border-color: rgba(236, 233, 225, 0.18);
+  color: var(--ink);
+}
+.postcard-media-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(168, 50, 30, 0.18);
+  border-top-color: var(--vermilion, #a8321e);
+  border-radius: 50%;
+  animation: pc-spin 0.9s linear infinite;
+  flex-shrink: 0;
 }

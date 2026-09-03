@@ -24,7 +24,7 @@ const SEAL_OPTIONS = ['诗', '礼', '福', '安', '乐', '吉', '春', '祥'];
 const FIELD_LIMITS = { sender: 12, recipient: 12, message: 30 };
 
 // 骨架占位 — 与主页面 .pc-skeleton 同质:进入即有结构,等 fetchSceneImage 替换
-//   v4.1.5: 改为复用主页面 .pc-skeleton 视觉契约 — 图区高度 210px + 文案
+//   v4.1.6: 同时承担 "正在加载" 的明确文案 + 视觉提示
 function skeletonHtml() {
   return `
     <div class="pc-skeleton">
@@ -38,6 +38,25 @@ function skeletonHtml() {
       </div>
       <div class="pc-skeleton-text">正在寻诗配图…</div>
     </div>`;
+}
+
+// 失败兜底 — fetchSceneImage 整体失败时用, 保留 v4.1.4 的"水墨意境"占位
+//   比单纯保留骨架更友好: 明确告诉用户"图没出来", 而不是无止境的 loading
+function fallbackHtml() {
+  return `
+    <div class="postcard-media-fallback" role="img" aria-label="意境暂不可用">
+      <span class="postcard-media-fallback-icon" aria-hidden="true">🏔</span>
+      <span class="postcard-media-fallback-text">意境暂不可用<br><small style="opacity:.7">稍后重试 · 或换一首</small></span>
+    </div>`;
+}
+
+// 加载中片段 — v4.1.6: 在 fetchSceneImage 期间显示
+//   <img> 同步嵌入让浏览器负责 loading 视觉, 自定义 spinner + 文案加强反馈
+function loadingTipHtml() {
+  return `<div class="postcard-media-loading-tip">
+    <span class="postcard-media-loading-spinner" aria-hidden="true"></span>
+    <span>意境加载中</span>
+  </div>`;
 }
 
 // 浏览器原生通知(用户首次下载时按需请求授权)
@@ -94,6 +113,7 @@ export function mountFestivalUI(storage, els) {
       sealText: '诗',
       imageUrl: '',
       bgImg: null,
+      imageStatus: 'idle',  // v4.1.6: idle | loading | ok | error
       dirty: false,
     };
   }
@@ -166,16 +186,24 @@ export function mountFestivalUI(storage, els) {
 
     // ③ 预览(明信片)
     if (els.card) {
-      // v4.1.5: 与主页面 main.js#drawNew 走同一流程
-      //   - state.bgImg 已有(用户切过节日/换过诗/重启恢复草稿)→ 直接嵌 <img src>
-      //   - state.bgImg 无 → 骨架占位,等 loadImage 完成后再 render 嵌入 <img>
-      const mediaHtml = state.bgImg
-        ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">`
-        : '';
-      els.card.innerHTML = state.bgImg
+      // v4.1.6: 与主页面 main.js#drawNew 走同一流程 — 进入即嵌 <img>
+      //   - state.imageStatus='ok' + bgImg → 直接嵌 <img src>(已 CORS 化,导出可用)
+      //   - state.imageStatus='loading' + imageUrl → 嵌 <img> + 加载中文案
+      //   - state.imageStatus='error' → 嵌 fallbackHtml("意境暂不可用")
+      //   - state.imageStatus='idle' → 嵌 skeletonHtml(进入即有结构)
+      let mediaInner = '';
+      if (state.imageStatus === 'ok' && state.bgImg) {
+        mediaInner = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">`;
+      } else if (state.imageStatus === 'loading' && state.imageUrl) {
+        mediaInner = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer" class="postcard-media-img--loading">${loadingTipHtml()}`;
+      } else if (state.imageStatus === 'error') {
+        mediaInner = fallbackHtml();
+      }
+      // idle / loading 但没 url(理论不应发生) → 走 skeletonHtml 兜底
+      els.card.innerHTML = (state.imageStatus !== 'idle')
         ? `
         <div class="postcard" id="pc-festival-postcard">
-          <div class="postcard-media">${mediaHtml}</div>
+          <div class="postcard-media">${mediaInner}</div>
           <div class="postcard-body">
             <h3 class="postcard-title">《${escapeHtml(poem.title)}》</h3>
             <p class="postcard-meta">${[poem.dynasty, poem.author, poem.type].filter(Boolean).map(escapeHtml).join(' · ')}</p>
@@ -306,6 +334,7 @@ export function mountFestivalUI(storage, els) {
     state.message = '';   // 切节日清空寄语
     state.bgImg = null;
     state.imageUrl = '';
+    state.imageStatus = 'idle';   // v4.1.6: 进入 idle, 由 loadImage 切到 loading
     state.dirty = true;
     draftStore.save(stripForSave(state));
     render();
@@ -320,6 +349,7 @@ export function mountFestivalUI(storage, els) {
     state.poemId = next.id;
     state.bgImg = null;
     state.imageUrl = '';
+    state.imageStatus = 'idle';   // v4.1.6: 同上
     state.dirty = true;
     draftStore.save(stripForSave(state));
     render();
@@ -334,16 +364,30 @@ export function mountFestivalUI(storage, els) {
       ...entry.poem,
       imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
     };
-    // v4.1.5: 与主页面 main.js#drawNew 同流程 — fetchSceneImage 拿到 url + img
-    //   拿到后整卡重渲染嵌入 <img>(onerror 兜底);失败/超时保留骨架占位
-    const r = await fetchSceneImage(poemWithKeywords, { totalBudgetMs: 6000 });
-    if (r && r.img) {
-      state.bgImg = r.img;
-      state.imageUrl = r.url || '';
-      draftStore.save(stripForSave(state));
-      render();   // 整卡重渲染,把 <img> 嵌进 .postcard-media(与主页面 renderPostcard 一致)
+    // v4.1.6: 与主页面 main.js#drawNew 同流程 — fetchSceneImage 拿到 url + img
+    //   同步进入 loading 态(让用户看到 <img> 元素 + spinner)
+    //   拿到后切换到 ok 态(<img> 显示完整图);失败 → error 态(fallback)
+    state.imageStatus = 'loading';
+    // 给一个临时 url 用于同步嵌 <img>(浏览器立刻开始加载, 显示 loading 视觉)
+    //   真实 url 由 fetchSceneImage 拿到后用 bgImg + url 重渲染
+    state.imageUrl = `https://picsum.photos/seed/poem${state.poemId}/720/450`;
+    render();
+    try {
+      const r = await fetchSceneImage(poemWithKeywords, { totalBudgetMs: 6000 });
+      if (r && r.img) {
+        state.bgImg = r.img;
+        state.imageUrl = r.url || state.imageUrl;
+        state.imageStatus = 'ok';
+        draftStore.save(stripForSave(state));
+      } else {
+        // fetchSceneImage 都失败: 进入 error 态,显示 fallback
+        state.imageStatus = 'error';
+      }
+    } catch (e) {
+      console.error('[festival] loadImage failed', e);
+      state.imageStatus = 'error';
     }
-    // else: 保留骨架占位(进入即有结构,等下次换诗再试)
+    render();
   }
 
   async function onDownload() {
@@ -396,14 +440,18 @@ export function mountFestivalUI(storage, els) {
   function boot() {
     const draft = draftStore.get();
     if (draft && draft.festivalId && draft.poemId) {
-      state = { ...freshState(), ...draft, bgImg: null };
+      state = { ...freshState(), ...draft, bgImg: null, imageStatus: 'idle' };
       lastSavedKey = JSON.stringify(stripForSave(state));
     } else {
       state = freshState();
       lastSavedKey = null;
     }
     state.dirty = false;
+    // v4.1.6: 同步进入 loading 态,跳过骨架过渡 — 用户一进来就看到 <img> + spinner
+    state.imageStatus = 'loading';
+    state.imageUrl = `https://picsum.photos/seed/poem${state.poemId}/720/450`;
     render();
+    // 异步 fetchSceneImage(覆盖 url + 设置 bgImg 或 status=error)
     loadImage();
   }
 
