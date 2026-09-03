@@ -402,12 +402,17 @@ export function mountFestivalUI(storage, els) {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
     const host = document.querySelector('.postcard');
+    // v4.2.0: 与主页 main.js#onDownload 完全对齐 — downloadCard 不再传 hostEl
+    //   同时显式 exportSize={w:1080,h:1440} 强制标准分享图大小(无论 host 实际多大)
+    //   主页在 hostEl 路径下,桌面 dpr=1 实际只导出 ~520×~490,远小于 README 描述的 1080×1440
+    //   用户报"贺卡下载大小不对"——对齐主页实现 + 修正导出尺寸,导出标准 1080×1440 PNG
     const cv = composeCard(entry.poem, state.bgImg, host, {
       sender: state.sender, recipient: state.recipient,
       message: state.message, sealText: state.sealText,
+      exportSize: { w: 1080, h: 1440 },
     });
     try {
-      const name = await downloadCard(cv, entry.poem, host);
+      const name = await downloadCard(cv, entry.poem);
       state.dirty = false;
       showToast(`已保存为 ${name}`, 'success');
       trySysNotify('贺卡已生成', name);
@@ -421,9 +426,11 @@ export function mountFestivalUI(storage, els) {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
     const host = document.querySelector('.postcard');
+    // v4.2.0: 与 onDownload 一致 — 显式 exportSize={w:1080,h:1440}
     const cv = composeCard(entry.poem, state.bgImg, host, {
       sender: state.sender, recipient: state.recipient,
       message: state.message, sealText: state.sealText,
+      exportSize: { w: 1080, h: 1440 },
     });
     try {
       await shareCard(cv, entry.poem);

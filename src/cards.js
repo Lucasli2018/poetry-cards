@@ -129,14 +129,20 @@ export function _resolveOptions(options) {
  * @param {object} poem   诗泉返回结构 {title, content[], author:{name}, dynasty:{name}, type:{name}}
  * @param {HTMLImageElement|null} bgImg  已带 CORS 的背景图；null 则用水墨渐变
  * @param {HTMLElement} [hostEl]  明信片 DOM 节点（用于量尺寸；可选，向后兼容）
- * @param {object} [options]  v4.0 贺卡选项:{ sender?, recipient?, message?, sealText? }
+ * @param {object} [options]  v4.0 贺卡选项:{ sender?, recipient?, message?, sealText?, exportSize?:{w,h} }
  *   不传 options / 空对象:与 v3.2.9 像素级一致
+ *   exportSize(v4.2.0): 自定义导出尺寸,例如 { w:1080, h:1440 } 强制按标准分享图大小导出
  * @returns {HTMLCanvasElement}
  */
 export function composeCard(poem, bgImg, hostEl, options = {}) {
-  const m = hostEl
-    ? measure(hostEl)
-    : { W: 1080, H: 1440, cssW: 1080, cssH: 1440, dpr: 1 };   // 兜底:未传 host 时用 3:4 默认值
+  // v4.2.0: exportSize 优先级最高 — 调用方明确指定导出尺寸(标准分享图 1080×1440)
+  //   用于贺卡页:无论 host 在桌面/移动的 CSS 像素多大,都导出 1080×1440 标准 PNG
+  const explicit = (options && typeof options === 'object') ? options.exportSize : null;
+  const m = explicit
+    ? { W: explicit.w, H: explicit.h, cssW: explicit.w, cssH: explicit.h, dpr: 1 }
+    : hostEl
+      ? measure(hostEl)
+      : { W: 1080, H: 1440, cssW: 1080, cssH: 1440, dpr: 1 };
   const { W: CARD_W, H: CARD_H, dpr } = m;
   // 字号锚 = CSS 像素(未 dpr),与页面渲染 1:1
   const FONT_W = m.cssW;
