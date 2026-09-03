@@ -1,5 +1,5 @@
 // =============================================================
-// 古韵抽卡 v4.0 · 节日贺卡屏 UI
+// 古韵抽卡 v4.1.5 · 节日贺卡屏 UI
 //
 // 职责:
 //   ① 渲染贺卡屏(festivalScreen 容器)
@@ -9,7 +9,10 @@
 //   ⑤ 下载 / 分享 — 复用 cards.js
 //   ⑥ 离开提示(dirty 时 confirm)
 //
-// 双入口(方案 C):与 .pc-main 互斥显示,不重叠。
+// 图片 + 诗词加载逻辑(v4.1.5):与主页面 main.js 完全对齐
+//   - 复用 fetchSceneImage(多源:Picsum → Pollinations → 兜底)
+//   - 进入即 render 骨架占位 → fetchSceneImage → 整卡重渲染嵌入 <img>
+//   - 加载失败:onerror 兜底为单色宣纸占位(保留 v4.1.4 体验)
 // =============================================================
 
 import { FESTIVALS, getFestivalById, getPoemById, isTodayFestival } from './festival-data.js';
@@ -20,17 +23,22 @@ import { fetchSceneImage } from './images.js';
 const SEAL_OPTIONS = ['诗', '礼', '福', '安', '乐', '吉', '春', '祥'];
 const FIELD_LIMITS = { sender: 12, recipient: 12, message: 30 };
 
-// v4.1.4: 进入页面立即显示"单色背景 + loading 状态"占位(0 网络请求)
-//   - 比 v4.1.3 6 主题渐变更轻量;占位用节令色或米白宣纸色
-//   - 异步 AI 图加载完成后会被 <img> 覆盖;加载失败时保留此占位
-//   - 视觉契约: 用户进入即看到 1 个有内容的矩形(不是空白/转圈)
-function escapeAttr(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function solidFallbackHtml() {
-  // 单色宣纸色 + loading spinner + 文案; 简洁,等待 API 替换
-  return `<div class="postcard-media-fallback postcard-media-fallback--solid" role="status" aria-label="意境加载中"><span class="postcard-media-fallback-spinner" aria-hidden="true"></span><span class="postcard-media-fallback-text">意境加载中</span></div>`;
+// 骨架占位 — 与主页面 .pc-skeleton 同质:进入即有结构,等 fetchSceneImage 替换
+//   v4.1.5: 改为复用主页面 .pc-skeleton 视觉契约 — 图区高度 210px + 文案
+function skeletonHtml() {
+  return `
+    <div class="pc-skeleton">
+      <div class="pc-skeleton-media"><span class="pc-shimmer"></span></div>
+      <div class="pc-skeleton-lines">
+        <span class="pc-skeleton-line" style="width:38%"></span>
+        <span class="pc-skeleton-line" style="width:22%"></span>
+        <span class="pc-skeleton-line" style="width:78%"></span>
+        <span class="pc-skeleton-line" style="width:70%"></span>
+        <span class="pc-skeleton-line" style="width:74%"></span>
+      </div>
+      <div class="pc-skeleton-text">正在寻诗配图…</div>
+    </div>`;
 }
-const FALLBACK_LOADING_HTML = '<div class="postcard-media-fallback postcard-media-fallback--loading" role="status" aria-label="意境加载中"><span class="postcard-media-fallback-icon" aria-hidden="true">🎐</span><span class="postcard-media-fallback-text">意境加载中</span></div>';
-const FALLBACK_DONE_HTML    = '<div class="postcard-media-fallback" role="img" aria-label="水墨意境"><span class="postcard-media-fallback-icon" aria-hidden="true">🏔</span><span class="postcard-media-fallback-text">水墨意境</span></div>';
 
 // 浏览器原生通知(用户首次下载时按需请求授权)
 let _notifyPermissionAsked = false;
@@ -158,14 +166,15 @@ export function mountFestivalUI(storage, els) {
 
     // ③ 预览(明信片)
     if (els.card) {
-      // v4.1.4: 进入即有图 — 单色背景 + loading 状态占位
-      //   已有 bgImg(用户切换过/历史)→ 用历史图;否则单色占位
-      //   API 异步加载完成后会替换为 <img>
+      // v4.1.5: 与主页面 main.js#drawNew 走同一流程
+      //   - state.bgImg 已有(用户切过节日/换过诗/重启恢复草稿)→ 直接嵌 <img src>
+      //   - state.bgImg 无 → 骨架占位,等 loadImage 完成后再 render 嵌入 <img>
       const mediaHtml = state.bgImg
-        ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous">`
-        : solidFallbackHtml();
-      els.card.innerHTML = `
-        <div class="postcard">
+        ? `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" referrerpolicy="no-referrer">`
+        : '';
+      els.card.innerHTML = state.bgImg
+        ? `
+        <div class="postcard" id="pc-festival-postcard">
           <div class="postcard-media">${mediaHtml}</div>
           <div class="postcard-body">
             <h3 class="postcard-title">《${escapeHtml(poem.title)}》</h3>
@@ -181,7 +190,8 @@ export function mountFestivalUI(storage, els) {
             <span class="postcard-seal" aria-label="印章">${escapeHtml(state.sealText)}</span>
           </div>
         </div>
-      `;
+      `
+        : skeletonHtml();
     }
 
     // ④ 操作按钮
@@ -324,29 +334,16 @@ export function mountFestivalUI(storage, els) {
       ...entry.poem,
       imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
     };
-    // v4.1.4: 渐进式增强 — render() 已经把"单色背景占位"渲染到图区
-    //   这里只是异步尝试加载 AI 图覆盖;失败/超时也保留占位(不再 fallback--error)
+    // v4.1.5: 与主页面 main.js#drawNew 同流程 — fetchSceneImage 拿到 url + img
+    //   拿到后整卡重渲染嵌入 <img>(onerror 兜底);失败/超时保留骨架占位
     const r = await fetchSceneImage(poemWithKeywords, { totalBudgetMs: 6000 });
     if (r && r.img) {
       state.bgImg = r.img;
       state.imageUrl = r.url || '';
       draftStore.save(stripForSave(state));
-      updatePreviewImage();
+      render();   // 整卡重渲染,把 <img> 嵌进 .postcard-media(与主页面 renderPostcard 一致)
     }
-    // else: 保留单色占位(进入即有内容,失败也好)
-  }
-
-  function updatePreviewImage() {
-    const media = document.querySelector('.postcard-media');
-    if (!media) return;
-    if (state.bgImg) {
-      // 使用已 CORS 化的 bgImg 直接渲染(已是浏览器可绘制的对象),
-      // 用 onerror 兜底:即便第二次加载失败,降级为水墨意境。
-      const safeFallback = FALLBACK_DONE_HTML.replace(/'/g, "\\'");
-      media.innerHTML = `<img src="${escapeHtml(state.imageUrl)}" alt="" crossorigin="anonymous" onerror="this.parentElement.innerHTML='${safeFallback}'">`;
-    } else {
-      media.innerHTML = FALLBACK_DONE_HTML;
-    }
+    // else: 保留骨架占位(进入即有结构,等下次换诗再试)
   }
 
   async function onDownload() {
