@@ -1,7 +1,7 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-> **v4.5.1** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
+> **v4.5.2** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
@@ -123,7 +123,6 @@ poetry-cards/
     ├── ui/                 v3.1 UI
     │   ├── memory-panel.js 共享 modal(三个 tab + ESC/外部关闭)
     │   ├── renderers.js    三个 tab 的渲染器(纯函数,易测)
-    │   ├── dom-to-canvas.js DOM-to-canvas 1:1 还原路径（保留，备用）
     │   └── storage-dialog.js 导出/导入 JSON(合并去重)
     ├── festival-data.js    节日加载 + 查询 + 节日日判定（公历映射 2026）
     ├── festival-draft.js   草稿 store（debounce + parseSafe + 5KB 截断）
@@ -238,6 +237,26 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.5.2 (2026-09-03) — 清理 vendor/html-to-image + 移除 dom-to-canvas 死代码
+
+清理 v3.2.5 引入但从未启用的「DOM 1:1 还原路径」残留——`composeCard` 从 v3.2.6 起就是唯一下载/分享路径，domToCanvas + vendor/html-to-image 12 个文件全部是死代码。
+
+**清理**：
+- 删除 `src/vendor/html-to-image/`（12 个文件：`apply-style.js` / `clone-node.js` / `clone-pseudos.js` / `dataurl.js` / `embed-images.js` / `embed-resources.js` / `embed-webfonts.js` / `index.js` / `LICENSE` / `mimes.js` / `types.js` / `util.js`，约 32KB vendored 库）
+- 删除 `src/ui/dom-to-canvas.js`（60 行死代码 wrapper）
+- 清理 `main.js` import 注释 + `getPostcardHost` 注释（去掉 `domToCanvas 仍保留` 字样）
+- 清理 `scripts/check-modules.mjs` 中 `dom2cvMod` 导入与符号检查
+- 清理 `README.md` 项目结构块
+
+**为什么不用 SnapDOM 替代**：
+- SnapDOM 是 npm 包（`@snapdom/snapdom`），从 CDN 加载或 npm install
+- 违反项目"零依赖 + 单 HTML + 原生 ESM + 同源"架构底线
+- `composeCard` 已字节级稳定——下载/分享走 Canvas 绘制，明信片版式（米白 + 朱砂 + 衬线 + 印章）完全可控，1:1 还原 DOM 没必要
+
+**架构红线 0 破**：零依赖 + 单 HTML + 原生 ESM + 「每次只发 2 个请求」不变；体积减少约 32KB；`composeCard` 字节级不变。
+
+**测试**：`scripts/check-modules.mjs` 22 → 21 项（去掉 dom2cv 项），全绿；`scripts/test-images-v44.mjs` 14/14 全绿。
 
 ### v4.5.0 (2026-09-03) — 贺卡页图片加载对齐主页 + 换图失败保留原图
 

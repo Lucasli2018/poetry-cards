@@ -13,8 +13,8 @@
 import { apiRequest, resetBreaker } from './net/api.js';
 import { fetchSceneImage, extractThemes } from './images.js';
 import { composeCard, downloadCard, shareCard } from './cards.js';
-// domToCanvas (v3.2.5 引入) 保留作为「未来 1:1 严格还原」路径;
-// 当前 onDownload / onShare 仍走 composeCard,稳定且已测通。
+// v4.5.2: domToCanvas + vendor/html-to-image 已清理 — v3.2.5 引入的「未来 1:1 路径」
+//   从未被启用, composeCard 字节级稳定, 此路径永久废弃
 import { createHistoryStore } from './store/history.js';
 import { createStatsStore } from './store/stats.js';
 import { createFavoritesStore } from './store/favorites.js';
@@ -533,8 +533,7 @@ async function drawNew() {
 // ── 导出 / 分享 ───────────────────────────────────────────
 // hostEl = 当前 DOM 明信片节点;canvas = composeCard(hostEl) —
 //   按 DOM 实际尺寸 + dpr 锐化,展示与导出在尺寸/字体比例上完全对齐。
-//   v3.2.6 决定回退到 composeCard:零依赖、稳定、已测;domToCanvas 仍保留
-//   作为未来「严格 1:1」优化路径,不在主路径上。
+//   v4.5.2: domToCanvas 路径永久移除 — composeCard 是唯一下载/分享路径
 function getPostcardHost() {
   return document.getElementById('pc-postcard');
 }
