@@ -1,7 +1,7 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-> **v4.6.0** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
+> **v4.6.1** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
@@ -10,7 +10,7 @@
 
 - 🖼️ **一进页面就出片**（v4.6.0 三源并发）：自动取 1 首随机诗词 + **毫秒级渲染诗词卡片**（不等图）+ 异步三源并发（**Pollinations 3s 优先窗口** → LoremFlickr 风景贴合 → Picsum 稳定兜底）按优先级采用，无需点击（默认走本地库，秒开）
 - 🛡️ **换图失败保留原图**（v4.5.0 起）：贺卡页换图时若三源（Picsum + LoremFlickr + Pollinations）全失败，**静默保留原有图片**，不打扰用户；首屏无图时才显示 fallback"意境暂不可用"
-- 🎨 **AI 意象配图**：从诗词提取意象生成 AI 提示词出图，配图贴着诗意；失败降级风景关键词图
+- 🎨 **AI 意象配图 + 意境提取**（v4.6.1）：从诗词提取**物象**（月/山/江/花…）+ **情感基调**（孤寂/愁思/思念/豪迈/旷达/喜悦/闲适）+ **时令**（春夏秋冬）+ **时段**（拂晓/白昼/黄昏/夜）+ **诗人风格**（王维清幽 / 李白浪漫 / 苏轼旷达…），五维编织成 AI 提示词与搜图标签；失败降级风景关键词图
 - 📮 **明信片版式**：横排诗词居中、大留白、细线分隔、朱砂小印
 - ⬇️ **导出 PNG**：Canvas 合成 **1080×1440**（3:4）竖版图，一键下载
 - 🔗 **分享**：Web Share API 直接分享图片（移动端）；不支持则自动回退为「复制诗词文案」
@@ -79,6 +79,31 @@
 
 > v4.6.0 在 v4.4.0 双源并发基础上扩展为**三源**：新增 LoremFlickr 作为 Pollinations 与 Picsum 之间的中间兜底（风景贴合、比 AI 快、比 Picsum 有主题），并给 Pollinations 一个 **3s 优先窗口**（见上表三源超时分配）。
 
+### 意境提取（v4.6.1 起）
+
+`src/images.js#extractConception(poem)` 是意境提取的统一入口，返回五维结果：
+
+| 维度 | 取值 | 说明 |
+| --- | --- | --- |
+| `imagery` | 物象 top2（沿用 v4.4 `extractThemes`） | 月 / 山 / 江 / 花 / 舟 / 寺 … 具体物象 |
+| `mood` | `solitude` / `melancholy` / `longing` / `heroic` / `free` / `joy` / `pastoral`，默认 `serene` | **情感基调**——意境的核心 |
+| `season` | `spring` / `summer` / `autumn` / `winter` / `null` | 时令，取主导一项 |
+| `time` | `dawn` / `day` / `dusk` / `night` / `null` | 时段，取主导一项 |
+| `authorStyle` | 诗人风格英文短语 / `null` | 仅对王维 / 李白 / 杜甫 / 苏轼 / 李清照 / 陶渊明 / 白居易 做偏置 |
+
+**单一真相原则**：情感 / 时令 / 时段各按「命中次数最多」取**一个**结果（`detectDominant`），
+避免一首诗同时命中「春 + 秋」导致画面矛盾同框；**同分按词表顺序取优先级更高的**
+（例：《天净沙·秋思》「断肠」与「思」同分 → 取 `melancholy`，更贴原诗愁绪）。
+
+**沿用「宁可漏判不可错判」**：词表只收确定性高的字 / 词——宁可某个维度返回 `null`，
+也不硬套一个错的氛围（如《登鹳雀楼》的「白日」不强行判为白昼，避免单字误伤）。
+
+**落地效果**（《静夜思》实例）：
+- 提示词：`ancient Chinese traditional painting, moonlit night with mountains, winter snow covered mountains, night, longing, nostalgic, tender mood, romantic expansive celestial grandeur, classical Song dynasty landscape art style, …`
+- 搜图标签：`landscape, nature, moonlight, night, winter, snow, moon, mist, fog`
+
+> 展示链路**未动**：诗词仍毫秒级可见、配图异步渐进替换；意境优化只改「图怎么生成 / 怎么搜」，不碰渲染时序。
+
 ## 技术栈
 
 - **零依赖**：原生 HTML + ES Modules + CSS，没有 npm、没有构建步骤
@@ -110,6 +135,7 @@ poetry-cards/
 │   └── test-festival-img-deep.mjs  图源/超时/降级深度探测（v4.1.3 起）
 │   └── test-images-v44.mjs         双源并发契约测试（v4.4.0 起，14 用例）
 │   └── test-images-v46-priority.mjs  三源并发优先级契约测试（v4.6.0 起，5 用例）
+│   └── test-images-v46-conception.mjs 意境提取契约测试（v4.6.1 起，42 用例）
 └── src/
     ├── main.js             主流程：一图一诗 · 请求纪律 · 主题切换 · v3.1 记忆入口
     ├── images.js           意象提取 + 图片多源守护（extractThemes 已 export，超时按预算分配）
@@ -244,6 +270,30 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.6.1 (2026-09-04) — 意境提取优化（情感 / 时令 / 时段 / 诗人风格）
+
+`extractThemes` 只抽**物象**（月/山/江/花），提示词后面永远挂同一段固定风格后缀——图贴「物」不贴「意」。《江雪》的孤寂与《春晓》的明媚，出图氛围几乎一样。
+
+**新增**（`src/images.js`）：
+- `extractConception(poem)` —— 意境提取统一入口，在物象之外补四个维度：`mood`（情感基调）/ `season`（时令）/ `time`（时段）/ `authorStyle`（诗人风格）
+- `MOODS` 情感词库：`solitude`（孤寂）/ `melancholy`（愁思）/ `longing`（思念）/ `heroic`（豪迈）/ `free`（旷达）/ `joy`（喜悦）/ `pastoral`（闲适），无命中默认 `serene`
+- `SEASONS` / `TIMES` 词库：春夏秋冬、拂晓 / 白昼 / 黄昏 / 夜，各取主导一项
+- `AUTHOR_STYLE`：王维清幽 / 李白浪漫 / 杜甫沉郁 / 苏轼旷达 / 李清照婉约 / 陶渊明田园 / 白居易温润（仅命中时追加，未命中不追加）
+- `detectDominant(lexicon, text)` —— 按命中次数取**单一**主导项，同分按词表顺序（顺序即优先级）
+
+**改写**：
+- `poemPrompt`：物象 + 时令 + 时段 + 情感 + 诗人风格 编织进 AI 提示词（v4.4 契约子串 `ancient Chinese` / `Song dynasty` / `moonlit` / `masterpiece` 全部保留）
+- `flickrTags`：同样融入时令 / 时段 / 情感标签，`landscape` + `nature` 护栏不变
+- `loremFlickrUrl` 由内部函数改为导出，便于契约测试验证标签编织
+
+**未动**：`extractThemes` 行为、三源并发时序、`composeCard`、诗词毫秒级可见的渐进增强链路。
+
+**顺带修复**：`scripts/test-images-v44.mjs` 的 `total` 在断言执行前就取值，导致输出误导性的「14/0 通过」；改为打印时计算。
+
+**新测试**：`scripts/test-images-v46-conception.mjs`（42 用例）— 覆盖 4 首样例诗（《静夜思》《江雪》《春晓》《天净沙·秋思》）的五维提取、提示词意境注入、标签编织、空诗安全与 `imageTags` 透传，42/42 全绿；旧 `test-images-v44.mjs` 14/14、`test-images-v46-priority.mjs` 5/5 无回归；`node --check` 全过。
+
+**架构红线 0 破**：零依赖 + 单 HTML + 原生 ESM 不变；意境词库**全本地**（0 网络请求）；`composeCard` 字节级不变。
 
 ### v4.6.0 (2026-09-04) — 配图三源并发 + Pollinations 3s 优先窗口
 

@@ -37,8 +37,6 @@ function truthy(v, label, hint = 'truthy') {
   failures.push({ label, actual: String(v), expected: hint });
 }
 
-const total = passed + failed;
-
 // ── ① sceneImageUrl — v4.4.0 主图源 ──
 const poem = {
   title: '静夜思',
@@ -81,7 +79,7 @@ truthy(prompt.includes('masterpiece'), 'poemPrompt: 含 masterpiece 后缀', 'in
 ok(SCENE_IMG_W, 720, 'SCENE_IMG_W: 720(展示图宽度)');
 ok(SCENE_IMG_H, 450, 'SCENE_IMG_H: 450(展示图高度)');
 
-console.log(`\n[test-images-v44] ${passed}/${total} 通过`);
+console.log(`\n[test-images-v44] ${passed}/${passed + failed} 通过`);
 if (failed) {
   for (const f of failures) console.error(`  ✗ ${f.label}: 实际 ${f.actual}, 期望 ${f.expected}`);
   process.exit(1);

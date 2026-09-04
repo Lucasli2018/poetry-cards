@@ -92,6 +92,76 @@ const FLICKR_TAGS = {
 
 const FALLBACK_TAGS = ['landscape', 'nature', 'scenery'];
 
+// ── 意境（情感 / 时令 / 时段 / 诗人风格）提取 ───────────────
+// 在「具体物象」(IMAGERY) 之外，进一步抽取诗词的**意境**：
+//   · 情感基调 mood   —— 孤寂 / 愁思 / 思念 / 豪迈 / 旷达 / 喜悦 / 闲适
+//   · 时令 season     —— 春 / 夏 / 秋 / 冬（取主导一项，避免春+秋矛盾同框）
+//   · 时段 time       —— 拂晓 / 白昼 / 黄昏 / 夜
+//   · 诗人风格 authorStyle（可选）—— 王维清幽、李白浪漫、苏轼旷达……
+// 这些维度共同决定 AI 出图的「氛围」，让图真正贴着诗的意，而不只贴物象。
+
+// 情感基调：顺序即优先级；按命中次数取主导一项，无则默认 serene
+const MOODS = [
+  { re: /孤|独|寂|寥|幽|静|恬|泊/,         key: 'solitude',   prompt: 'solitary, quiet, contemplative atmosphere', flickr: ['calm', 'mist'] },
+  { re: /愁|悲|怨|凄|怅|惘|泪|憔悴|断肠|泣/, key: 'melancholy', prompt: 'melancholic, wistful, sorrowful mood',      flickr: ['mist', 'fog'] },
+  { re: /思|忆|念|怀|梦|故|乡|归雁|望乡/,   key: 'longing',    prompt: 'longing, nostalgic, tender mood',           flickr: ['mist', 'fog'] },
+  { re: /豪|壮|狂|志|剑|征|战|铁|疆|戈/,     key: 'heroic',     prompt: 'grand, heroic, dynamic energy',            flickr: ['mountain', 'dramatic'] },
+  { re: /旷|达|豁|逍|遥|仙|羽|忘机|醉|酌|倾杯/, key: 'free',     prompt: 'free-spirited, transcendent, ethereal mood', flickr: ['clouds', 'sky'] },
+  { re: /喜|欢|笑|乐|悦|歌|舞/,             key: 'joy',        prompt: 'joyful, bright, lively mood',              flickr: ['blossom', 'bright'] },
+  { re: /闲|田|农|渔|樵|归隐|耦/,           key: 'pastoral',   prompt: 'leisurely, pastoral, peaceful mood',        flickr: ['meadow', 'calm'] },
+];
+
+// 时令：取主导一项（避免一首诗同时出现春+秋导致画面矛盾）
+const SEASONS = [
+  { re: /春|东风|柳|燕|桃|杏|莺|芳草|暖/, key: 'spring', prompt: ', springtime', flickr: ['spring', 'blossom'] },
+  { re: /夏|荷|莲|蝉|薰|溽/,           key: 'summer', prompt: ', summer',    flickr: ['summer', 'lotus'] },
+  { re: /秋|西风|落叶|枫|霜叶|梧桐/,     key: 'autumn', prompt: ', autumn',    flickr: ['autumn', 'maple'] },
+  { re: /雪|冰|寒|凛|梅|岁寒/,          key: 'winter', prompt: ', winter',    flickr: ['winter', 'snow'] },
+];
+
+// 时段：取主导一项
+const TIMES = [
+  { re: /朝|晨|晓|旭|旦|黎明|拂晓/,         key: 'dawn', prompt: ', dawn light',   flickr: ['dawn', 'mist'] },
+  { re: /午|日中|正午|晴|霁/,               key: 'day',  prompt: ', daytime',     flickr: ['daylight'] },
+  { re: /暮|昏|夕|落日|斜阳|残照|晚照|向晚/, key: 'dusk', prompt: ', dusk glow',   flickr: ['sunset', 'dusk'] },
+  { re: /夜|宵|星|河汉|漏|烛|望月|明月/,     key: 'night', prompt: ', night',      flickr: ['night', 'moon'] },
+];
+
+// 诗人风格（仅对少数耳熟能详的诗人做风格偏置，未命中则不追加）
+const AUTHOR_STYLE = {
+  '王维':   'zen monastic tranquility',
+  '李白':   'romantic expansive celestial grandeur',
+  '杜甫':   'solemn humane realism',
+  '苏轼':   'open-minded philosophical ease',
+  '李清照': 'delicate introspective grace',
+  '陶渊明': 'pastoral serenity and simplicity',
+  '白居易': 'gentle lucid warmth',
+};
+
+// 各维度的英文短语映射（供 poemPrompt / flickrTags 拼接）
+const MOOD_PROMPT = Object.fromEntries(MOODS.map((m) => [m.key, m.prompt]));
+const SEASON_PROMPT = Object.fromEntries(SEASONS.map((s) => [s.key, s.prompt]));
+const TIME_PROMPT = Object.fromEntries(TIMES.map((t) => [t.key, t.prompt]));
+const SEASON_FLICKR = Object.fromEntries(SEASONS.map((s) => [s.key, s.flickr]));
+const TIME_FLICKR = Object.fromEntries(TIMES.map((t) => [t.key, t.flickr]));
+const MOOD_FLICKR = Object.fromEntries(MOODS.map((m) => [m.key, m.flickr]));
+
+const DEFAULT_MOOD = 'serene';
+const DEFAULT_MOOD_PROMPT = 'serene, harmonious, balanced mood';
+
+/**
+ * 在词表里按「命中次数最多」取主导一项（单一真相，避免矛盾同框）。
+ * @returns {string|null}
+ */
+function detectDominant(lexicon, text) {
+  let best = null, bestN = 0;
+  for (const e of lexicon) {
+    const n = countMatches(e.re, text);
+    if (n > bestN) { bestN = n; best = e.key; }
+  }
+  return best;
+}
+
 /** 统计某正则在文本中的命中次数（全局匹配） */
 function countMatches(re, text) {
   const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
@@ -129,31 +199,60 @@ export function extractThemes(poem) {
 }
 
 /**
- * 为 Pollinations AI 生成英文提示词。
- * 风格统一偏向「古代中国画」：水墨/青绿山水、宋人山水意境、低饱和、留白。
+ * 抽取一首诗的「意境」——在 物象(imagery) 之外，补充
+ * 情感(mood) / 时令(season) / 时段(time) / 诗人风格(authorStyle)。
+ * 这是 v4.6.1 对图像贴合度的核心优化：让 AI 出图按「氛围」而非只按「物」生成。
+ * @param {{title?:string, content?:string[], author?:{name?:string}|string, imageTags?:string[]}} poem
+ * @returns {{imagery:string[], mood:string, season:string|null, time:string|null, authorStyle:string|null}}
  */
-export function poemPrompt(poem) {
-  const themes = extractThemes(poem);
-  const scenes = themes.length
-    ? themes.map((k) => PROMPT_WORDS[k] || k).join(', ')
-    : 'serene chinese landscape';
-  // 古代风格前缀 + 场景 + 古画风格后缀
-  return `ancient Chinese traditional painting, ${scenes}, classical Song dynasty landscape art style, ` +
-         `traditional ink wash and mineral-green shanshui, serene, elegant, muted earth tones, ` +
-         `fine brushwork, masterpiece`;
+export function extractConception(poem) {
+  const text = [poem?.title || '', ...(poem?.content || [])].join('');
+  const authorName = (typeof poem?.author === 'string') ? poem.author : (poem?.author?.name || '');
+  const imagery = extractThemes(poem);
+  const mood = detectDominant(MOODS, text) || DEFAULT_MOOD;
+  const season = detectDominant(SEASONS, text);
+  const time = detectDominant(TIMES, text);
+  const authorStyle = AUTHOR_STYLE[authorName] || null;
+  return { imagery, mood, season, time, authorStyle };
 }
 
 /**
- * 为 LoremFlickr 生成风景标签。
+ * 为 Pollinations AI 生成英文提示词。
+ * 风格统一偏向「古代中国画」：水墨/青绿山水、宋人山水意境、低饱和、留白。
+ *
+ * v4.6.1 起按「意境」编织：物象(imagery) + 时令(season) + 时段(time) +
+ * 情感基调(mood) + 诗人风格(authorStyle)，让画面贴着诗的氛围而非只贴物。
+ */
+export function poemPrompt(poem) {
+  const c = extractConception(poem);
+  const scenes = c.imagery.length
+    ? c.imagery.map((k) => PROMPT_WORDS[k] || k).join(', ')
+    : 'serene chinese landscape';
+  const seasonPhrase = c.season ? SEASON_PROMPT[c.season] : '';
+  const timePhrase = c.time ? TIME_PROMPT[c.time] : '';
+  const moodPhrase = MOOD_PROMPT[c.mood] || DEFAULT_MOOD_PROMPT;
+  const authorPhrase = c.authorStyle ? `, ${c.authorStyle}` : '';
+  // 古代风格前缀 + 物象 + 时令/时段 + 情感 + 诗人风格 + 古画风格后缀
+  return `ancient Chinese traditional painting, ${scenes}${seasonPhrase}${timePhrase}, ${moodPhrase}${authorPhrase}, ` +
+         `classical Song dynasty landscape art style, traditional ink wash and mineral-green shanshui, ` +
+         `serene, elegant, muted earth tones, fine brushwork, masterpiece`;
+}
+
+/**
+ * 为 LoremFlickr 生成风景标签（v4.6.1 起同样融入意境维度）。
+ * 始终带 landscape + nature 护栏，避免搜到街景 / 人像。
  */
 function flickrTags(poem) {
-  const themes = extractThemes(poem);
-  if (!themes.length) return [...FALLBACK_TAGS];
-
+  const c = extractConception(poem);
   const set = new Set(['landscape', 'nature']);
-  for (const k of themes) {
-    const tags = FLICKR_TAGS[k] || [k];
-    for (const t of tags) set.add(t);
+  if (!c.imagery.length) for (const t of FALLBACK_TAGS) set.add(t);
+  for (const k of c.imagery) {
+    for (const t of (FLICKR_TAGS[k] || [k])) set.add(t);
+  }
+  if (c.season) for (const t of SEASON_FLICKR[c.season]) set.add(t);
+  if (c.time) for (const t of TIME_FLICKR[c.time]) set.add(t);
+  if (c.mood && c.mood !== DEFAULT_MOOD) {
+    for (const t of (MOOD_FLICKR[c.mood] || [])) set.add(t);
   }
   return Array.from(set);
 }
@@ -221,7 +320,7 @@ function pollinationsUrl(poem, opts = {}) {
   return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
 }
 
-function loremFlickrUrl(poem, opts = {}) {
+export function loremFlickrUrl(poem, opts = {}) {
   const w = opts.width || SCENE_IMG_W;
   const h = opts.height || SCENE_IMG_H;
   const seed = opts.seed ?? Date.now();
