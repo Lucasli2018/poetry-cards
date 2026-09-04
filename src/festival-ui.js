@@ -10,7 +10,7 @@
 //   ⑥ 离开提示(dirty 时 confirm)
 //
 // 图片 + 诗词加载逻辑(v4.1.5):与主页面 main.js 完全对齐
-//   - 复用 fetchSceneImage(多源:Picsum → Pollinations → 兜底)
+//   - 复用 fetchSceneImage(双源:LoremFlickr → Picsum 兜底)
 //   - 进入即 render 骨架占位 → fetchSceneImage → 整卡重渲染嵌入 <img>
 //   - 加载失败:onerror 兜底为单色宣纸占位(保留 v4.1.4 体验)
 // =============================================================
@@ -378,13 +378,12 @@ export function mountFestivalUI(storage, els) {
   }
 
   // v4.6: 图源优先级(高→低), 用于「不降级」保护
-  const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2, Pollinations: 3 };
+  const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2 };
 
-  // v4.6: 与主页面 main.js#drawNew 同策略 — 三源并发 + Pollinations 优先窗口
+  // v4.7.0: 与主页面 main.js#drawNew 同策略 — 双源并发(LoremFlickr 优先 + Picsum 兜底)
   //   boot 时卡片骨架已渲染(诗词+字段完整);本函数:
-  //     - 立即 fetchSceneImage 同时发起三源
-  //     - onPollinations: Pollinations 3s 内返回即用(主题最贴合)
-  //     - onLoremFlickr: Pollinations 超时 → 用 LoremFlickr(风景贴合)
+  //     - 立即 fetchSceneImage 同时发起双源
+  //     - onLoremFlickr: 主源, 主题贴合, 4s 超时
   //     - onPicsum: LoremFlickr 失败 → 用 Picsum(稳定兜底)
   //     - 失败/超时: 已有图则静默保留, 无图才显示 fallback
   async function loadImage() {
@@ -416,10 +415,8 @@ export function mountFestivalUI(storage, els) {
         draftStore.save(stripForSave(state));
       };
       const final = await fetchSceneImage(poemWithKeywords, {
-        totalBudgetMs: 6000,
         onPicsum: commit,
         onLoremFlickr: commit,
-        onPollinations: commit,
       });
       if (state.poemId !== entry.poem.id) return;
       // v4.5.1: 全失败 — 已有图则静默回填保留(不动 DOM), 无图才显示 fallback
@@ -456,7 +453,7 @@ export function mountFestivalUI(storage, els) {
 
   // v4.5.0: 复用主页 main.js#swapImage 模式 — 双源并发渐进增强 + 失败保留原图
   //   与主页语义对齐:
-  //     · 复用 fetchSceneImage 的 onPicsum/onPollinations 回调, 谁先到谁先替换
+  //     · 复用 fetchSceneImage 的 onPicsum/onLoremFlickr 回调, 谁先到谁先替换
   //     · 全失败时若原本就有图(state.bgImg), 静默保留原图 + toast 提示
   //     · 全失败且原本无图, 才显示 fallbackHtml("意境暂不可用")
   //   不再显示加载中 spinner / 文案 — 按钮 .is-busy 旋转反馈即可
@@ -481,7 +478,6 @@ export function mountFestivalUI(storage, els) {
         imageTags: festival?.themeKeywords || entry.festival.themeKeywords,
       };
       let picsumShown = false;
-      let pollinShown = false;
       let loremShown = false;
       let committedRank = 0;
       const commit = (r) => {
@@ -490,7 +486,6 @@ export function mountFestivalUI(storage, els) {
         committedRank = SCENE_RANK[r.source] || 0;
         if (r.source === 'Picsum') picsumShown = true;
         else if (r.source === 'LoremFlickr') loremShown = true;
-        else if (r.source === 'Pollinations') pollinShown = true;
         state.bgImg = r.img;
         state.imageUrl = r.url;
         state.imageStatus = 'ok';
@@ -499,16 +494,13 @@ export function mountFestivalUI(storage, els) {
       };
       const finalResult = await fetchSceneImage(poemWithKeywords, {
         seed: Date.now() + Math.floor(Math.random() * 1e6),
-        totalBudgetMs: 10000,
         onPicsum: commit,
         onLoremFlickr: commit,
-        onPollinations: commit,
       });
       if (seq !== _swapSeq) return;
 
-      // v4.6: 反馈 — Pollinations=主题图 / LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
-      if (pollinShown) showToast('已换主题图', 'success');
-      else if (loremShown) showToast('已换意境图', 'success');
+      // v4.7.0: 反馈 — LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
+      if (loremShown) showToast('已换意境图', 'success');
       else if (picsumShown) showToast('已换一张配图', 'success');
       else if (hadImg && prevBgImg) showToast('配图暂不可用，已保留原图', 'error');
       else {

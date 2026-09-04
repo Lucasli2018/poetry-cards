@@ -74,10 +74,10 @@ let localPoems = [];      // 本地兜底诗词库
 let curPoem = null;       // 当前诗
 let curImg = null;        // 当前背景图（HTMLImageElement，已 CORS）
 let curImgUrl = null;
-let curSource = 'none';   // 图源：Pollinations / LoremFlickr / Picsum / none
+let curSource = 'none';   // 图源：LoremFlickr / Picsum / none
 
 // v4.6: 图源优先级(高→低), 用于「不降级」保护
-const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2, Pollinations: 3 };
+const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2 };
 // 提交一张场景图: seq/poem 校验 + 不降级(低优先级不覆盖高优先级)
 function applyScene(r, poemRef, seqRef) {
   if (seqRef !== _seq) return;
@@ -349,7 +349,7 @@ function updateImageOnly(url, source, readyImg) {
 }
 
 // 单独换图：复用当前诗词，换新 seed 重新取配图；遵守请求纪律（_busy / _seq）。
-// v4.4.0: 与 drawNew 同样走双源并发渐进增强 — Picsum 先到先替换, Pollinations 后到再替换
+// v4.7.0: 与 drawNew 同样走双源并发渐进增强 — LoremFlickr 先到先替换, Picsum 兜底
 // v4.5.1: 关键修复 —
 //   · 双源回调里 seq 校验不通过 → return (丢弃旧回调) — 但**不动 DOM**, 保留原图
 //   · 全失败 → 不动 DOM, 保留原图 + toast "已保留原图"
@@ -366,20 +366,16 @@ async function swapImage() {
   try {
     const seed = Date.now() + Math.floor(Math.random() * 1e6);
     let picsumShown = false;
-    let pollinShown = false;
     let loremShown = false;
     const finalResult = await fetchSceneImage(curPoem, {
       seed,
-      totalBudgetMs: 10000,
       onPicsum: (r) => { if (seq !== _seq) return; picsumShown = true; applyScene(r, curPoem, seq); },
       onLoremFlickr: (r) => { if (seq !== _seq) return; loremShown = true; applyScene(r, curPoem, seq); },
-      onPollinations: (r) => { if (seq !== _seq) return; pollinShown = true; applyScene(r, curPoem, seq); },
     });
     if (seq !== _seq) return;
 
-    // 反馈: Pollinations=主题图 / LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
-    if (pollinShown) toast('已换主题图');
-    else if (loremShown) toast('已换意境图');
+    // 反馈: LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
+    if (loremShown) toast('已换意境图');
     else if (picsumShown) toast('已换一张配图');
     else {
       // v4.5.1: 全失败 — 保留原图
@@ -401,12 +397,12 @@ async function swapImage() {
 }
 
 // ── 核心：换一张（1 次 random + 双源并发图） ─────────────────
-// v4.4.0: 首屏毫秒级策略 — 诗词出现时间从「等图回来」提前到「拿到诗就显示」
+// v4.7.0: 首屏毫秒级策略 — 诗词出现时间从「等图回来」提前到「拿到诗就显示」
 //   T+0ms    → showSkeleton() 骨架(无诗词)  [向后兼容, 老 fallback]
 //   T+0+ms  → 拿到诗 → renderPostcard() 同步拼完整卡片(诗词+字段+纯色图区)
-//            → fetchSceneImage 双源并发
-//   T+~1500ms → Picsum 回调 → updateImageOnly 局部替换 <img src>
-//   T+~5000ms → Pollinations 回调 → updateImageOnly 局部替换 <img src>
+//            → fetchSceneImage 双源并发(LoremFlickr + Picsum 同时发起)
+//   T+~1500ms → Picsum 兜底回调 → updateImageOnly 局部替换 <img src>
+//   T+~4000ms → LoremFlickr 主源回调 → 再次局部替换 <img src>(主题更贴合)
 //   失败/超时 → 不替换, 保留已出的图(或纯色占位)
 async function drawNew() {
   // ① 同步锁：任何来源的二次触发直接丢弃
@@ -471,16 +467,13 @@ async function drawNew() {
     //   v4.5.1: 回调传 r.img (已 loaded), updateImageOnly 复用 URL 避免重新加载
     const finalResult = await fetchSceneImage(poem, {
       seed: poem.id || seq,
-      totalBudgetMs: 4000,
       onPicsum: (r) => applyScene(r, poem, seq),
       onLoremFlickr: (r) => applyScene(r, poem, seq),
-      onPollinations: (r) => applyScene(r, poem, seq),
     });
     if (seq !== _seq) return;
 
-    // 用最终结果覆盖 curSource(可能在 onPicsum/onPollinations 中已更新)
+    // 用最终结果覆盖 curSource(可能在 onPicsum/onLoremFlickr 中已更新)
     //   - 若两张都失败: 上面 hadImg 块已处理保留原图
-    //   - 若 Pollinations 后到, curSource 已是 Pollinations, 不动
     if (finalResult.source !== 'none') {
       curImg = finalResult.img;
       curImgUrl = finalResult.url;
