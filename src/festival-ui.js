@@ -377,12 +377,16 @@ export function mountFestivalUI(storage, els) {
     loadImage();
   }
 
-  // v4.5.0: 与主页面 main.js#drawNew 同策略 — 双源并发渐进增强
+  // v4.6: 图源优先级(高→低), 用于「不降级」保护
+  const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2, Pollinations: 3 };
+
+  // v4.6: 与主页面 main.js#drawNew 同策略 — 三源并发 + Pollinations 优先窗口
   //   boot 时卡片骨架已渲染(诗词+字段完整);本函数:
-  //     - 立即 fetchSceneImage 启动双源
-  //     - onPicsum: 局部更新 <img src>, 字段/分隔不重排
-  //     - onPollinations: 二次替换, 主题更贴合
-  //     - 失败/超时: 与 onSwapImage 一致 — 已有图则静默保留, 无图才显示 fallback
+  //     - 立即 fetchSceneImage 同时发起三源
+  //     - onPollinations: Pollinations 3s 内返回即用(主题最贴合)
+  //     - onLoremFlickr: Pollinations 超时 → 用 LoremFlickr(风景贴合)
+  //     - onPicsum: LoremFlickr 失败 → 用 Picsum(稳定兜底)
+  //     - 失败/超时: 已有图则静默保留, 无图才显示 fallback
   async function loadImage() {
     const entry = getPoemById(state.poemId);
     if (!entry) return;
@@ -400,25 +404,22 @@ export function mountFestivalUI(storage, els) {
     const prevBgImg = state.bgImg;    // v4.5.1: 备份原图, 全失败时回填
     const prevImageUrl = state.imageUrl;
     try {
+      let committedRank = 0;
+      const commit = (r) => {
+        if (state.poemId !== entry.poem.id) return;
+        if ((SCENE_RANK[r.source] || 0) < committedRank) return;
+        committedRank = SCENE_RANK[r.source] || 0;
+        state.bgImg = r.img;
+        state.imageUrl = r.url;
+        state.imageStatus = 'ok';
+        updatePostcardImage(r.url, r.source, r.img);
+        draftStore.save(stripForSave(state));
+      };
       const final = await fetchSceneImage(poemWithKeywords, {
         totalBudgetMs: 6000,
-        onPicsum: (r) => {
-          if (state.poemId !== entry.poem.id) return;
-          state.bgImg = r.img;
-          state.imageUrl = r.url;
-          state.imageStatus = 'ok';
-          // v4.5.1: 传 r.img 复用 URL 避免重新加载
-          updatePostcardImage(r.url, r.source, r.img);
-          draftStore.save(stripForSave(state));
-        },
-        onPollinations: (r) => {
-          if (state.poemId !== entry.poem.id) return;
-          state.bgImg = r.img;
-          state.imageUrl = r.url;
-          state.imageStatus = 'ok';
-          updatePostcardImage(r.url, r.source, r.img);
-          draftStore.save(stripForSave(state));
-        },
+        onPicsum: commit,
+        onLoremFlickr: commit,
+        onPollinations: commit,
       });
       if (state.poemId !== entry.poem.id) return;
       // v4.5.1: 全失败 — 已有图则静默回填保留(不动 DOM), 无图才显示 fallback
@@ -481,60 +482,40 @@ export function mountFestivalUI(storage, els) {
       };
       let picsumShown = false;
       let pollinShown = false;
+      let loremShown = false;
+      let committedRank = 0;
+      const commit = (r) => {
+        if (seq !== _swapSeq) return;
+        if ((SCENE_RANK[r.source] || 0) < committedRank) return;
+        committedRank = SCENE_RANK[r.source] || 0;
+        if (r.source === 'Picsum') picsumShown = true;
+        else if (r.source === 'LoremFlickr') loremShown = true;
+        else if (r.source === 'Pollinations') pollinShown = true;
+        state.bgImg = r.img;
+        state.imageUrl = r.url;
+        state.imageStatus = 'ok';
+        updatePostcardImage(r.url, r.source, r.img);
+        draftStore.save(stripForSave(state));
+      };
       const finalResult = await fetchSceneImage(poemWithKeywords, {
         seed: Date.now() + Math.floor(Math.random() * 1e6),
         totalBudgetMs: 10000,
-        onPicsum: (r) => {
-          if (seq !== _swapSeq) return;
-          picsumShown = true;
-          state.bgImg = r.img;
-          state.imageUrl = r.url;
-          state.imageStatus = 'ok';
-          // v4.5.1: 传 r.img — updatePostcardImage 复用 URL 避免浏览器重新加载
-          updatePostcardImage(r.url, r.source, r.img);
-          draftStore.save(stripForSave(state));
-        },
-        onPollinations: (r) => {
-          if (seq !== _swapSeq) return;
-          pollinShown = true;
-          // 主题贴合, 总是替换 Picsum 的图
-          state.bgImg = r.img;
-          state.imageUrl = r.url;
-          state.imageStatus = 'ok';
-          updatePostcardImage(r.url, r.source, r.img);
-          draftStore.save(stripForSave(state));
-        },
+        onPicsum: commit,
+        onLoremFlickr: commit,
+        onPollinations: commit,
       });
       if (seq !== _swapSeq) return;
 
-      // v4.5.1: 全失败 — 已有图则静默保留(不动 DOM);无图才显示 fallback
-      if (!pollinShown && !picsumShown && hadImg && prevBgImg) {
-        // 静默保留 — bgImg / imageUrl 保持原值, DOM 不动
-        showToast('配图暂不可用，已保留原图', 'error');
-      } else if (!pollinShown && !picsumShown) {
+      // v4.6: 反馈 — Pollinations=主题图 / LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
+      if (pollinShown) showToast('已换主题图', 'success');
+      else if (loremShown) showToast('已换意境图', 'success');
+      else if (picsumShown) showToast('已换一张配图', 'success');
+      else if (hadImg && prevBgImg) showToast('配图暂不可用，已保留原图', 'error');
+      else {
         // 原本无图 — 走 fallback "意境暂不可用"
         state.imageStatus = 'error';
         render();
         showToast('配图暂不可用，请稍后重试', 'error');
-      } else if (pollinShown) {
-        showToast('已换主题图', 'success');
-      } else if (picsumShown) {
-        showToast('已换一张配图', 'success');
-      }
-
-      // 反馈 toast — 与主页语义一致
-      if (pollinShown) showToast('已换主题图', 'success');
-      else if (picsumShown) showToast('已换一张配图', 'success');
-      else {
-        // 全失败: 保留原图(若有), 仅 toast 提示
-        if (hadImg) {
-          showToast('配图暂不可用，已保留原图', 'error');
-        } else {
-          // 原本无图 — 走 fallback "意境暂不可用"
-          state.imageStatus = 'error';
-          render();
-          showToast('配图暂不可用，请稍后重试', 'error');
-        }
       }
     } catch (e) {
       console.error('[festival] swapImage failed', e);

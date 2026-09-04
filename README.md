@@ -1,19 +1,15 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-<<<<<<< HEAD
-> **v4.5.2** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
-=======
-> **v4.5.1** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
->>>>>>> 3de3b946c6e1e3a4c2a33c1e7974d634244b87f2
+> **v4.6.0** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
 
 ## 功能
 
-- 🖼️ **一进页面就出片**（v4.4.0 双源并发）：自动取 1 首随机诗词 + **毫秒级渲染诗词卡片**（不等图）+ 异步双源并发（Picsum 1.5s 秒出 → Pollinations 3-5s 主题贴合）渐进增强替换，无需点击（默认走本地库，秒开）
-- 🛡️ **换图失败保留原图**（v4.5.0）：贺卡页换图时若 Picsum + Pollinations 全失败，**静默保留原有图片**，不打扰用户；首屏无图时才显示 fallback"意境暂不可用"
+- 🖼️ **一进页面就出片**（v4.6.0 三源并发）：自动取 1 首随机诗词 + **毫秒级渲染诗词卡片**（不等图）+ 异步三源并发（**Pollinations 3s 优先窗口** → LoremFlickr 风景贴合 → Picsum 稳定兜底）按优先级采用，无需点击（默认走本地库，秒开）
+- 🛡️ **换图失败保留原图**（v4.5.0 起）：贺卡页换图时若三源（Picsum + LoremFlickr + Pollinations）全失败，**静默保留原有图片**，不打扰用户；首屏无图时才显示 fallback"意境暂不可用"
 - 🎨 **AI 意象配图**：从诗词提取意象生成 AI 提示词出图，配图贴着诗意；失败降级风景关键词图
 - 📮 **明信片版式**：横排诗词居中、大留白、细线分隔、朱砂小印
 - ⬇️ **导出 PNG**：Canvas 合成 **1080×1440**（3:4）竖版图，一键下载
@@ -28,14 +24,14 @@
 
 ## 请求纪律（关键）
 
-每次「换一张」**严格只发 2 个请求**：1 次 `/api/poems/random` + 1 次图片请求。四重保障：
+每次「换一张」发 1 次 `/api/poems/random` + 三源图片请求（Pollinations / LoremFlickr / Picsum **同时并发**，按优先级只采用其一）。v4.6.0 起图片改为三源并发，图片请求数由 2 → 3 是有意为之的体验取舍（见下「图片超时分配」）。四重保障：
 
 | 机制 | 作用 |
 | --- | --- |
 | `_busy` 同步锁 | 连击 / 空格 / 触摸二次触发，一律在入口处丢弃 |
 | `_lastClickAt` 250ms 防抖 | 防移动端 tap×2 |
 | `AbortController` | 取消在途旧请求，避免旧响应覆盖新结果 |
-| **v4.4.0 双源并发渐进增强** | 诗词**毫秒级可见**（拿到诗就 renderPostcard）；Picsum 1.5s + Pollinations 3-5s 并发启动，谁先到谁先替换；失败静默保留已出图 |
+| **v4.6.0 三源并发优先级** | 诗词**毫秒级可见**（拿到诗就 renderPostcard）；Pollinations 3s 优先窗口 + LoremFlickr 4s + Picsum 2s 三源并发，Pollinations 优先、超时降级 LoremFlickr、再降级 Picsum；失败静默保留已出图 |
 | 令牌桶 + 熔断（`api.js`） | 容量 6 / 3 每秒 / 并发 ≤2；连续 5 次失败开路，冷却 10s 后半开探测 |
 
 > 历史包袱：v2.0 曾用「池化预加载」（一次并发 6 个 random），会瞬间触发诗泉 API 的 429 限流，已于 v2.2 起彻底移除。
@@ -44,13 +40,14 @@
 
 **诗词** · [诗泉](https://poetry.palemoky.com/) 免费开源 API（37 万+ 首 / 1.3 万+ 诗人）
 
-**配图** · 多源守护，按优先级：
+**配图** · 三源并发守护，按优先级裁决（v4.6.0 起）：
 
-1. **Picsum**（v4.1.3 起作主源）— seed 稳定随机风景图，秒出稳定，`Access-Control-Allow-Origin: *`
-2. **Pollinations AI** — 根据诗词意象生成专属配图，主题贴合；`Access-Control-Allow-Origin: *`，实际 3-5s 出图
-3. **水墨渐变 / 静态兜底** — 纯 CSS 兜底，任何情况都有底
+1. **Pollinations AI**（3s 优先窗口）— 根据诗词意象生成专属配图，主题最贴合；`Access-Control-Allow-Origin: *`，实际 3-5s 出图
+2. **LoremFlickr**（4s 兜底）— 按诗词关键词搜风景实拍图，意境贴合；`Access-Control-Allow-Origin: *`
+3. **Picsum**（2s 兜底）— seed 稳定随机风景图，秒出稳定；`Access-Control-Allow-Origin: *`
+4. **水墨渐变 / 静态兜底** — 纯 CSS 兜底，任何情况都有底
 
-> v4.1.3 把主源从 Pollinations 切到 Picsum（秒出稳定，用户等不及），Pollinations 仍作主题贴合的备源；LoremFlickr 保留代码但未在调用链中使用。
+> 三源**同时**发起请求，但只采用优先级最高、最先到达者：Pollinations 优先（3s 窗口内未返回则降级），LoremFlickr 次之，Picsum 最后兜底；任一图源失败静默跳过、保留已出的图，全失败才显示单色占位。
 
 > ⚠️ **Unsplash Source**（`source.unsplash.com`）已于 2024 年下线，已全面移除。
 
@@ -64,21 +61,23 @@
 >
 > 💡 图源必须带 CORS 头，否则 Canvas 会被污染（tainted），`toDataURL()` 直接抛 `SecurityError`，导出功能将完全不可用。因此图片加载统一设 `crossOrigin='anonymous'`。
 
-### 图片超时分配（v4.4.0 起双源并发）
+### 图片超时分配（v4.6.0 起三源并发）
 
-每源不再硬 cap，超时按总预算比例分配；**两源并发启动，谁先到谁先替换**：
+三源**同时发起请求**，按优先级裁决；**Pollinations 给 3s 优先窗口**，超时/失败再依次用 LoremFlickr / Picsum：
 
-| 调用方 | 总预算 `totalBudgetMs` | Picsum | Pollinations | 模式 |
-| --- | --- | --- | --- | --- |
-| `drawNew` 首屏（默认） | 4000 | 2000ms 并发 | max(3000, min(8000, floor(remain*0.8))) | **双源并发，渐进增强** |
-| 贺卡页 `loadImage` | 6000 | 2000ms 并发 | 同上 | **双源并发，渐进增强** |
-| 用户主动 `swapImage` ↻ | 10000 | 2000ms 并发 | 同上 | **双源并发，渐进增强** |
+| 调用方 | 总预算 `totalBudgetMs` | Picsum | LoremFlickr | Pollinations | 模式 |
+| --- | --- | --- | --- | --- | --- |
+| `drawNew` 首屏（默认） | 4000 | 2000ms | 4000ms | **3s 优先窗口**（超时即降级） | **三源并发，优先级裁决** |
+| 贺卡页 `loadImage` | 6000 | 2000ms | 4000ms | 3s 优先窗口 | **三源并发，优先级裁决** |
+| 用户主动 `swapImage` ↻ | 10000 | 2000ms | 4000ms | 3s 优先窗口 | **三源并发，优先级裁决** |
 
 **关键变化（v4.4.0）**：
 - 旧实现是**串行**：先 await picsum → 失败 → await pollin。诗词出现时间 = `picsum 出图 + 渲染 ≈ 1.5s`
 - 新实现是**并发**：`Promise.allSettled([picsum, pollin])`，诗词出现时间 = `拿到诗即可 ≈ 100ms`
 - 任一先到通过 `onPicsum` / `onPollinations` 回调 → 局部更新 `<img src>`（**不重建 .postcard-body**）
 - 失败/超时静默跳过，保留已出的图；全失败才 `source='none'` + 单色 `.postcard-media--empty`
+
+> v4.6.0 在 v4.4.0 双源并发基础上扩展为**三源**：新增 LoremFlickr 作为 Pollinations 与 Picsum 之间的中间兜底（风景贴合、比 AI 快、比 Picsum 有主题），并给 Pollinations 一个 **3s 优先窗口**（见上表三源超时分配）。
 
 ## 技术栈
 
@@ -110,6 +109,7 @@ poetry-cards/
 │   ├── test-festival-headless.mjs headless Chrome 交互验证（12 项，v4.0 起）
 │   └── test-festival-img-deep.mjs  图源/超时/降级深度探测（v4.1.3 起）
 │   └── test-images-v44.mjs         双源并发契约测试（v4.4.0 起，14 用例）
+│   └── test-images-v46-priority.mjs  三源并发优先级契约测试（v4.6.0 起，5 用例）
 └── src/
     ├── main.js             主流程：一图一诗 · 请求纪律 · 主题切换 · v3.1 记忆入口
     ├── images.js           意象提取 + 图片多源守护（extractThemes 已 export，超时按预算分配）
@@ -137,7 +137,7 @@ poetry-cards/
 
 ## 数据流
 
-### 主页抽卡屏（v4.4.0 双源并发）
+### 主页抽卡屏（v4.6.0 三源并发）
 
 ```
 页面加载
@@ -146,30 +146,33 @@ poetry-cards/
        ├─ 拿到诗 → renderPostcard(poem, '', 'none') 同步拼完整卡片
        │           ├─ 诗词 / 作者朝代 / 字段区 / 印章 就位
        │           └─ 图区显示单色米白宣纸 (.postcard-media--empty)
-       └─ fetchSceneImage() 异步双源并发:
-            ├─ ① Picsum     timeout=2000ms (秒出稳定)
-            ├─ ② Pollinations timeout=3000~8000ms (主题贴合, 慢)
-            ├─ 任一成功 → onPicsum/onPollinations 回调
-            │             → updateImageOnly() 局部替换 <img src>
-            │             → 诗词/字段/分隔 0 重排
+       └─ fetchSceneImage() 异步三源并发:
+            ├─ ① Pollinations 3s 优先窗口 (主题最贴合, 慢)
+            ├─ ② LoremFlickr timeout=4000ms (风景贴合)
+            ├─ ③ Picsum     timeout=2000ms (稳定兜底)
+            ├─ Pollinations 3s 内返回 → onPollinations 采用
+            ├─ 否则 → LoremFlickr 采用(onLoremFlickr) → 再否则 Picsum(onPicsum)
+            │   → updateImageOnly() 局部替换 <img src>
+            │   → 诗词/字段/分隔 0 重排
             └─ 全失败 → 保留单色 .postcard-media--empty 占位
   ↓
 点「下载」→ composeCard() 用同一张 CORS 图合成 Canvas → 1080×1440 PNG
 点「分享」→ navigator.share({files}) → 失败则复制文案
-点「↻」→ swapImage(10000ms) 双源并发, toast 区分反馈
+点「↻」→ swapImage(10000ms) 三源并发, toast 区分反馈
 ```
 
-> 默认开启「经典诗词」后，首屏不发任何远程诗词请求，发 1 次 Picsum + 1 次 Pollinations 并发（其中 Picsum 通常先到，Pollinations 后到作为主题增强）。
+> 默认开启「经典诗词」后，首屏不发任何远程诗词请求，配图走 **Picsum + LoremFlickr + Pollinations 三源并发**：Pollinations 3s 优先窗口内返回则采用 AI 主题图，否则降级 LoremFlickr 风景图，再失败降级 Picsum 稳定兜底。
 
-### 贺卡屏（v4.1 festival.html，v4.4.0 双源并发）
+### 贺卡屏（v4.1 festival.html，v4.6.0 三源并发）
 
 ```
 页面加载
   ├─ boot() 同步 state.imageStatus='loading' + 临时 picsum URL
   └─ render() 嵌 <img>+spinner (浏览器开始加载)
-  └─ loadImage() 异步 fetchSceneImage() 双源并发:
-       ├─ Picsum 先到 → onPicsum → updatePostcardImage() 局部替换 <img src>
-       ├─ Pollinations 后到 → onPollinations → 再次局部替换
+  └─ loadImage() 异步 fetchSceneImage() 三源并发:
+       ├─ Pollinations 3s 优先窗口 → onPollinations → updatePostcardImage() 局部替换 <img src>
+       ├─ LoremFlickr 4s → onLoremFlickr → 局部替换（风景贴合）
+       ├─ Picsum 2s → onPicsum → 局部替换（稳定兜底）
        └─ 全失败 → state.imageStatus='error' → fallback "意境暂不可用"
   ↓
 用户输入收信人/落款/寄语 → debounce 500ms 写入 pc_v3_festival_draft
@@ -241,6 +244,25 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.6.0 (2026-09-04) — 配图三源并发 + Pollinations 3s 优先窗口
+
+把配图从「Picsum + Pollinations 双源并发」升级为「三源并发、按优先级裁决」，并给 Pollinations（主题最贴合但最慢）一个 3 秒优先窗口——3s 内返回就采用 AI 图，否则降级 LoremFlickr 风景图，再失败降级 Picsum 兜底。一次换图最多同时发 3 个图请求，但只采用优先级最高者。
+
+**改动**（`src/images.js#fetchSceneImage`）：
+- 三个图源 **T+0 同时发起**：`pollinationsUrl` / `loremFlickrUrl` / `picsumUrl`，分别 `loadImage(...)` 包装为 `{img,url,source}` 或 `null`
+- **Pollinations 3s 优先窗口**：`Promise.race([aiP, delay(3000)])`；窗口内 AI 图先到 → `onPollinations` 采用并立即返回
+- 否则依次 `await fkP`（LoremFlickr 4s）→ `await pcP`（Picsum 2s），谁到用谁
+- 每个 `onXxx` 回调**只在对应源被采用时触发一次**，低优先级晚到不会覆盖已采用的高优先级图（`SCENE_RANK` 守卫，复用主页 / 贺卡页既有的 no-degrade 模式）
+- 全失败 → `{img:null,url:null,source:'none'}`
+
+**请求纪律取舍**：v4.6.0 起图片请求数由 2 → 3（Picsum + LoremFlickr + Pollinations 同时并发），是有意为之的体验取舍——优先窗口让主题最贴合的 AI 图有机会被采用，又不被它拖垮首屏速度。诗词请求仍 1 次，连击锁 / 防抖 / AbortController 不变。
+
+**主页 / 贺卡页联动**：`main.js#drawNew` / `swapImage` 与 `festival-ui.js#loadImage` / `onSwapImage` 均改为三回调（`onPicsum` / `onLoremFlickr` / `onPollinations`），toast 区分反馈（已换主题图 / 已换意境图 / 已换一张配图）。
+
+**新测试**：`scripts/test-images-v46-priority.mjs`（5 用例）— Mock `Image` 驱动，覆盖「Pollinations 快→AI」「Pollinations 慢→LoremFlickr」「Pollinations+LoremFlickr 失败→Picsum」「全失败→none」「Pollinations 2.5s 在窗口内→AI」5 个场景，5/5 全绿；旧 `test-images-v44.mjs` 14/14 无回归；`node --check` 全过。
+
+**架构红线 0 破**：零依赖 + 单 HTML + 原生 ESM 不变；`composeCard` 字节级不变；三源同带 `crossOrigin='anonymous'`，Canvas 不被污染。
 
 ### v4.5.2 (2026-09-03) — 清理 vendor/html-to-image + 移除 dom-to-canvas 死代码
 

@@ -168,14 +168,16 @@ function flickrTags(poem) {
 export const SCENE_IMG_W = 720;
 export const SCENE_IMG_H = 450;
 
-// 图片加载:总超时缩短到 4s(原 8s),失败快速降级到 LoremFlickr / Picsum / 渐变
+// 图片加载: 失败快速降级到 LoremFlickr / Picsum / 渐变
 //   减少「点击换一张 → 长时间等待」的体感
-const IMG_TIMEOUT_MS = 4000;
-const AI_TIMEOUT_MS = 6000;   // v4.1.2: Pollinations 实际生成图 3-5s, 3.5s 太短 → 6s
-// v4.4.0: 双源并发上限 — Picsum 秒出分配 2s, Pollinations AI 主题贴合分配到 8s
-const PIC_TIMEOUT_MS = 2000;
-const POLLIN_TIMEOUT_MS_MIN = 3000;
-const POLLIN_TIMEOUT_MS_MAX = 8000;
+const IMG_TIMEOUT_MS = 4000;            // loadImage 默认超时(兜底用)
+const AI_TIMEOUT_MS = 6000;            // 独立 fetchPollinationsImage 用
+const PIC_TIMEOUT_MS = 2000;           // Picsum 兜底(秒出, 失败立即降级)
+const POLLIN_TIMEOUT_MS_MIN = 3000;    // 独立 fetchPollinationsImage 下限
+const POLLIN_TIMEOUT_MS_MAX = 8000;    // 独立 fetchPollinationsImage 上限
+// v4.6: 三源并发 + Pollinations 优先窗口(用户指定 3 秒)
+const POLLIN_GATE_MS = 3000;           // Pollinations 3 秒内未返回图片 → 降级 LoremFlickr
+const FLICKR_TIMEOUT_MS = 4000;        // LoremFlickr 兜底超时
 
 /**
  * 加载一张可用于 Canvas 导出的图片。
@@ -206,6 +208,11 @@ function loadImage(url, timeout = IMG_TIMEOUT_MS) {
   });
 }
 
+/** 简单的延时 Promise, 用于 Pollinations 优先窗口计时 */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function pollinationsUrl(poem, opts = {}) {
   const w = opts.width || SCENE_IMG_W;
   const h = opts.height || SCENE_IMG_H;
@@ -230,70 +237,77 @@ function picsumUrl(opts = {}) {
 }
 
 /**
- * v4.4.0 双源并发渐进增强
+ * v4.6 三源并发 + Pollinations 优先窗口
  * ──────────────────────────────────────────────────────────
- * 用户体验目标：诗词卡片**毫秒级可见**, 图渐进增强。
+ * 用户体验目标：主题最贴合的图优先, 但绝不傻等; 三源**同时发起请求**。
  *
- * 流程(主路径,被 drawNew / loadImage 调用):
- *   T+0ms      调用方同步拼卡片骨架(诗词 + 单色图区背景)        [0 网络请求]
- *   T+0ms      fetchSceneImage 启动两个独立请求:
- *              ├─ ① Picsum     timeout=2000ms(秒出稳定)
- *              └─ ② Pollinations timeout=3000~8000ms(主题贴合,慢)
- *   T+~1500ms  Picsum 成功 → 调用方局部替换 <img src>(不重建卡片)
- *   T+~5000ms  Pollinations 成功 → 调用方再局部替换 <img src>
- *   失败/超时  → 不替换, 保留已出的图(或初始骨架)
+ * 优先级链(用户 2026-09-04 指定):
+ *   ① Pollinations  —— 按诗意 AI 生成, 最贴合; 给 3s 优先窗口
+ *   ② LoremFlickr   —— 按风景关键词搜索; Pollinations 3s 内未返回则用它
+ *   ③ Picsum        —— seed 稳定随机; LoremFlickr 无图(失败)时用它
+ *
+ * 流程:
+ *   T+0ms   fetchSceneImage 同时发起三个独立请求(Pollinations / LoremFlickr / Picsum)
+ *   T≤3s    Pollinations 返回图片 → 立即采用(回调 onPollinations), 结束
+ *   T=3s    Pollinations 仍未返回(超时/失败) → 采用 LoremFlickr(已并发, 通常早已就绪)
+ *           LoremFlickr 无图(失败) → 采用 Picsum(已并发, 秒级就绪)
+ *   全失败  → {null, null, 'none'}, 调用方保留原图 / 显示水墨底纹
  *
  * 设计要点:
- *   - **不串行**: 旧实现是 Picsum → fail → Pollinations 串行, 主题图平均要 3-5s;
- *     新实现双源并发, 任一先到就先替换, 平均出图时间 = min(Picsum, Pollinations) ≈ 1.5s
- *   - **不重建**: 调用方用 updateImageOnly / updatePostcardImage 局部更新 <img src>,
- *     诗词/字段/分隔不重排(对齐 v4.3.1 模式)
- *   - **失败不降级到底**: 任一失败不抛错, 静默保留上一张图; 全部失败才回 source='none'
+ *   - **同时发起**: 三源并发, 不串行; 仅在「决定采用哪张」时按优先级裁决
+ *   - **3s 优先窗口**: Pollinations 是慢源, 但最贴合; 用户指定 3s 内未返回即降级,
+ *     不在慢源上无限等待(对比旧 v4.4.0 的 8s 上限)
+ *   - **失败不降级到底**: 任一失败不抛错; 全部失败才回 source='none'
+ *   - **不重建**: 调用方用 updateImageOnly / updatePostcardImage 局部更新 <img src>
+ *   - **回调只触发一次**: 仅在「采用该源」时触发对应回调, 避免低优先级源后到时
+ *     错误地覆盖已采用的高优先级图
  *
  * @param {object} poem
  * @param {{width?:number, height?:number, seed?:number,
  *          totalBudgetMs?:number,
  *          onPicsum?:(r)=>void,
+ *          onLoremFlickr?:(r)=>void,
  *          onPollinations?:(r)=>void}} opts
- *   onPicsum / onPollinations 是回调, 哪张图先到就先回调(可同步替换 UI)
+ *   onPicsum / onLoremFlickr / onPollinations 是回调, 仅在「采用该源」时触发一次
  * @returns {Promise<{img:HTMLImageElement|null, url:string|null, source:string}>}
- *   返回最后成功的图(优先 Picsum, 后 Pollinations); 全失败则 {null, null, 'none'}
+ *   返回最终采用的图(优先级 Pollinations > LoremFlickr > Picsum); 全失败则 {null, null, 'none'}
  */
 export async function fetchSceneImage(poem, opts = {}) {
-  const totalBudget = Math.max(2000, opts.totalBudgetMs || 4000);
-  const t0 = Date.now();
-  const remain = () => Math.max(500, totalBudget - (Date.now() - t0));
-
-  // Picsum timeout: 2000ms(够秒出, 失败立即降级)
-  // Pollinations timeout: 剩余预算的 80%, 但 3000-8000ms 之间
-  const pUrl = picsumUrl(opts);
   const aiUrl = pollinationsUrl(poem, opts);
-  const picTimeout = PIC_TIMEOUT_MS;
-  const aiTimeout = Math.max(
-    POLLIN_TIMEOUT_MS_MIN,
-    Math.min(POLLIN_TIMEOUT_MS_MAX, Math.floor(remain() * 0.8))
-  );
+  const fkUrl = loremFlickrUrl(poem, opts);
+  const pcUrl = picsumUrl(opts);
 
-  // 双源并发 — Promise 包装 loadImage, 任一 resolve 就触发回调
-  const picPromise = loadImage(pUrl, picTimeout).then((img) => {
-    if (img && opts.onPicsum) opts.onPicsum({ img, url: pUrl, source: 'Picsum' });
-    return img ? { img, url: pUrl, source: 'Picsum' } : null;
-  });
-  const aiPromise = loadImage(aiUrl, aiTimeout).then((img) => {
-    if (img && opts.onPollinations) opts.onPollinations({ img, url: aiUrl, source: 'Pollinations' });
-    return img ? { img, url: aiUrl, source: 'Pollinations' } : null;
-  });
+  // 三源并发 — 同时发起请求。
+  // 注意: 这里只在 .then 里做「结果映射」, **不**触发 UI 回调;
+  //   回调只在下方「决定采用该源」时触发一次, 防止低优先级源后到覆盖高优先级图。
+  const aiP = loadImage(aiUrl, POLLIN_GATE_MS)
+    .then((img) => (img ? { img, url: aiUrl, source: 'Pollinations' } : null));
+  const fkP = loadImage(fkUrl, FLICKR_TIMEOUT_MS)
+    .then((img) => (img ? { img, url: fkUrl, source: 'LoremFlickr' } : null));
+  const pcP = loadImage(pcUrl, PIC_TIMEOUT_MS)
+    .then((img) => (img ? { img, url: pcUrl, source: 'Picsum' } : null));
 
-  // 等待两者: 优先返回先到的, 但要等到两者都 settle(成功/失败/超时)
-  //   避免悬空的 img 仍在加载(后台占带宽)
-  const results = await Promise.allSettled([picPromise, aiPromise]);
+  // ① Pollinations 优先: 3 秒窗口内返回即用
+  const aiGate = await Promise.race([aiP, delay(POLLIN_GATE_MS).then(() => null)]);
+  if (aiGate) {
+    if (opts.onPollinations) opts.onPollinations(aiGate);
+    return aiGate;
+  }
 
-  // 优先级: Picsum 先到 → 用 Picsum; Picsum 失败 → 用 Pollinations; 都失败 → 'none'
-  const pic = results[0].status === 'fulfilled' ? results[0].value : null;
-  const ai  = results[1].status === 'fulfilled' ? results[1].value : null;
+  // ② Pollinations 超时/失败 → LoremFlickr(已并发, 可能早已就绪)
+  const fk = await fkP;
+  if (fk) {
+    if (opts.onLoremFlickr) opts.onLoremFlickr(fk);
+    return fk;
+  }
 
-  if (pic) return pic;
-  if (ai) return ai;
+  // ③ LoremFlickr 失败 → Picsum(已并发, 秒级就绪)
+  const pc = await pcP;
+  if (pc) {
+    if (opts.onPicsum) opts.onPicsum(pc);
+    return pc;
+  }
+
   return { img: null, url: null, source: 'none' };
 }
 

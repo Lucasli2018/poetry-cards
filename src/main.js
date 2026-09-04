@@ -74,7 +74,20 @@ let localPoems = [];      // 本地兜底诗词库
 let curPoem = null;       // 当前诗
 let curImg = null;        // 当前背景图（HTMLImageElement，已 CORS）
 let curImgUrl = null;
-let curSource = 'none';   // 图源：LoremFlickr / Picsum / none
+let curSource = 'none';   // 图源：Pollinations / LoremFlickr / Picsum / none
+
+// v4.6: 图源优先级(高→低), 用于「不降级」保护
+const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2, Pollinations: 3 };
+// 提交一张场景图: seq/poem 校验 + 不降级(低优先级不覆盖高优先级)
+function applyScene(r, poemRef, seqRef) {
+  if (seqRef !== _seq) return;
+  if (curPoem !== poemRef) return;
+  if ((SCENE_RANK[r.source] || 0) < (SCENE_RANK[curSource] || 0)) return;
+  curImg = r.img;
+  curImgUrl = r.url;
+  curSource = r.source;
+  updateImageOnly(r.url, r.source, r.img);
+}
 let degraded = false;     // 是否已降级到本地库
 let localFirst = true;    // 「经典诗词」模式：默认开启，只走本地 70 首，不发远程
 
@@ -354,33 +367,19 @@ async function swapImage() {
     const seed = Date.now() + Math.floor(Math.random() * 1e6);
     let picsumShown = false;
     let pollinShown = false;
+    let loremShown = false;
     const finalResult = await fetchSceneImage(curPoem, {
       seed,
       totalBudgetMs: 10000,
-      onPicsum: (r) => {
-        // v4.5.1: seq 校验不通过 = 期间又触发了 swap/drawNew, 静默丢弃,
-        //   不动 DOM (避免清掉新一次的图) — 用户的当前最新视图由新 seq 的回调负责
-        if (seq !== _seq) return;
-        picsumShown = true;
-        curImg = r.img;
-        curImgUrl = r.url;
-        curSource = r.source;
-        updateImageOnly(r.url, r.source, r.img);
-      },
-      onPollinations: (r) => {
-        if (seq !== _seq) return;
-        pollinShown = true;
-        // 主题贴合优先 — 总是替换 Picsum 的图
-        curImg = r.img;
-        curImgUrl = r.url;
-        curSource = r.source;
-        updateImageOnly(r.url, r.source, r.img);
-      },
+      onPicsum: (r) => { if (seq !== _seq) return; picsumShown = true; applyScene(r, curPoem, seq); },
+      onLoremFlickr: (r) => { if (seq !== _seq) return; loremShown = true; applyScene(r, curPoem, seq); },
+      onPollinations: (r) => { if (seq !== _seq) return; pollinShown = true; applyScene(r, curPoem, seq); },
     });
     if (seq !== _seq) return;
 
-    // 反馈: 两张都成功提示"主题已贴合"; 仅 Picsum 提示"已换图"; 全失败保留原图
+    // 反馈: Pollinations=主题图 / LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
     if (pollinShown) toast('已换主题图');
+    else if (loremShown) toast('已换意境图');
     else if (picsumShown) toast('已换一张配图');
     else {
       // v4.5.1: 全失败 — 保留原图
@@ -473,24 +472,9 @@ async function drawNew() {
     const finalResult = await fetchSceneImage(poem, {
       seed: poem.id || seq,
       totalBudgetMs: 4000,
-      onPicsum: (r) => {
-        if (seq !== _seq) return;
-        if (curPoem !== poem) return;
-        curImg = r.img;
-        curImgUrl = r.url;
-        curSource = r.source;
-        updateImageOnly(r.url, r.source, r.img);
-      },
-      onPollinations: (r) => {
-        if (seq !== _seq) return;
-        if (curPoem !== poem) return;
-        // Pollinations 优先级高于 Picsum(主题更贴合) — 但只在 Picsum 之后到时替换
-        if (curSource === 'Pollinations') return;   // 已是 Pollinations, 不替换
-        curImg = r.img;
-        curImgUrl = r.url;
-        curSource = r.source;
-        updateImageOnly(r.url, r.source, r.img);
-      },
+      onPicsum: (r) => applyScene(r, poem, seq),
+      onLoremFlickr: (r) => applyScene(r, poem, seq),
+      onPollinations: (r) => applyScene(r, poem, seq),
     });
     if (seq !== _seq) return;
 
