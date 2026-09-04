@@ -1,14 +1,14 @@
 # 古韵抽卡 · 一图一诗
 
 > 随机一首古诗词，配一张贴题意象的美图，合成一张可保存的明信片。
-> **v4.7.0** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
+> **v4.7.1** · 文艺清新 · 零依赖 · 零构建 · 可下载 · 可分享 · **节日贺卡**
 
 打开页面即自动呈上一张「一图一诗」的明信片，按空格或点「换一张」再来一张；
 或在首页点「🎴 贺卡」进入节日贺卡编辑器，自定义收信人/落款/寄语/印章，做一张专属贺卡 PNG。
 
 ## 功能
 
-- 🖼️ **一进页面就出片**（v4.7.0 双源并发）：自动取 1 首随机诗词 + **毫秒级渲染诗词卡片**（不等图）+ 异步双源并发（**LoremFlickr 意境贴合** → Picsum 稳定兜底）按优先级采用，无需点击（默认走本地库，秒开）
+- 🖼️ **诗词与配图一起出**（v4.7.1 双源并发）：自动取 1 首随机诗词 + **双源并发取图**（LoremFlickr 意境贴合 → Picsum 稳定兜底），取诗+取图期间显示骨架，图到位后诗词与配图**一次性渲染**，无需点击（默认走本地库，秒开）
 - 🛡️ **换图失败保留原图**（v4.5.0 起）：贺卡页换图时若双源（LoremFlickr + Picsum）全失败，**静默保留原有图片**，不打扰用户；首屏无图时才显示 fallback"意境暂不可用"
 - 🎨 **意境意象配图**（v4.6.1 起，v4.7.0 精简）：从诗词提取**物象**（月/山/江/花…）+ **情感基调**（孤寂/愁思/思念/豪迈/旷达/喜悦/闲适）+ **时令**（春夏秋冬）+ **时段**（拂晓/白昼/黄昏/夜）四维，汇聚成 LoremFlickr 的**单 tag 随机池**（每次只取一个意象维度搜图），意境更聚焦；失败降级 Picsum 稳定兜底
 - 📮 **明信片版式**：横排诗词居中、大留白、细线分隔、朱砂小印
@@ -31,7 +31,7 @@
 | `_busy` 同步锁 | 连击 / 空格 / 触摸二次触发，一律在入口处丢弃 |
 | `_lastClickAt` 250ms 防抖 | 防移动端 tap×2 |
 | `AbortController` | 取消在途旧请求，避免旧响应覆盖新结果 |
-| **v4.7.0 双源并发优先级** | 诗词**毫秒级可见**（拿到诗就 renderPostcard）；LoremFlickr 4s + Picsum 2s 双源并发，LoremFlickr 优先、失败降级 Picsum；失败静默保留已出图 |
+| **v4.7.1 双源并发 + 等图一起出** | 取诗+取图期间显示骨架；`fetchSceneImage` 双源并发（LoremFlickr 4s 优先 / Picsum 2s 兜底）拿到最终结果后**一次性 renderPostcard(诗词+图)**；全失败渲染诗词 + 单色占位 |
 | 令牌桶 + 熔断（`api.js`） | 容量 6 / 3 每秒 / 并发 ≤2；连续 5 次失败开路，冷却 10s 后半开探测 |
 
 > 历史包袱：v2.0 曾用「池化预加载」（一次并发 6 个 random），会瞬间触发诗泉 API 的 429 限流，已于 v2.2 起彻底移除。
@@ -101,7 +101,7 @@
 - 提示词：`ancient Chinese traditional painting, moonlit night with mountains, winter snow covered mountains, night, longing, nostalgic, tender mood, romantic expansive celestial grandeur, classical Song dynasty landscape art style, …`
 - 搜图标签：`landscape, nature, moonlight, night, winter, snow, moon, mist, fog`
 
-> 展示链路**未动**：诗词仍毫秒级可见、配图异步渐进替换；意境优化只改「图怎么生成 / 怎么搜」，不碰渲染时序。
+> v4.6.1 意境优化只改「图怎么生成 / 怎么搜」；**渲染时序于 v4.7.1 改回「等图一起出」**（见更新日志）—— 诗词与配图一次性渲染，不再分两步渐进增强。
 
 ## 技术栈
 
@@ -162,30 +162,28 @@ poetry-cards/
 
 ## 数据流
 
-### 主页抽卡屏（v4.7.0 双源并发）
+### 主页抽卡屏（v4.7.1 等图一起出）
 
 ```
 页面加载
   ├─ showSkeleton() 骨架过渡 (极快)
   └─ drawNew() 启动
-       ├─ 拿到诗 → renderPostcard(poem, '', 'none') 同步拼完整卡片
-       │           ├─ 诗词 / 作者朝代 / 字段区 / 印章 就位
-       │           └─ 图区显示单色米白宣纸 (.postcard-media--empty)
-       └─ fetchSceneImage() 异步双源并发:
+       ├─ 取诗(本地优先 / 远程) → 仍显示骨架(诗词未出)
+       └─ fetchSceneImage() 双源并发:
             ├─ ① LoremFlickr timeout=4000ms (主源, 意境贴合, 单 tag 随机池)
             ├─ ② Picsum     timeout=2000ms (稳定兜底)
-            ├─ LoremFlickr 成功 → onLoremFlickr 采用(主题最贴合, 优先)
-            ├─ 否则 → Picsum 采用(onPicsum)
-            │   → updateImageOnly() 局部替换 <img src>
-            │   → 诗词/字段/分隔 0 重排
-            └─ 全失败 → 保留单色 .postcard-media--empty 占位
+            ├─ LoremFlickr 成功 → 采用(主题最贴合, 优先)
+            ├─ 否则 → Picsum 采用
+            └─ 拿到最终结果 → renderPostcard(poem, url, source) 一次性渲染整卡(诗词+图)
+                 ├─ 诗词 / 作者朝代 / 字段区 / 印章 就位
+                 └─ 图区嵌 <img>(或全失败 → 单色 .postcard-media--empty 占位)
   ↓
 点「下载」→ composeCard() 用同一张 CORS 图合成 Canvas → 1080×1440 PNG
 点「分享」→ navigator.share({files}) → 失败则复制文案
-点「↻」→ swapImage() 双源并发, toast 区分反馈(意境图 / 配图)
+点「↻」→ swapImage() 保留当前诗词, 等双源最终结果回来再一次性换图(意境图 / 配图)
 ```
 
-> 默认开启「经典诗词」后，首屏不发任何远程诗词请求，配图走 **LoremFlickr + Picsum 双源并发**：LoremFlickr 主源（单 tag 随机池，意境贴合）成功即采用，失败/超时降级 Picsum 稳定兜底。
+> 默认开启「经典诗词」后，首屏不发任何远程诗词请求，配图走 **LoremFlickr + Picsum 双源并发**：LoremFlickr 主源（单 tag 随机池，意境贴合）成功即采用，失败/超时降级 Picsum 稳定兜底。诗词与配图**同时呈现**（取诗+取图全程显示骨架，图到后整卡一次性渲染）。
 
 ### 贺卡屏（v4.1 festival.html，v4.7.0 双源并发）
 
@@ -267,6 +265,17 @@ python scripts/serve.py 8080
 > 因此日常开发**只需 `git push origin master`**,Cloudflare Pages + GitHub Pages 会自动跟随更新。
 
 ## 更新日志
+
+### v4.7.1 (2026-09-04) — 诗词与配图一起出（回退渐进增强）
+
+应需求把首屏抽卡改回「等图一起出」：诗词不再毫秒级先显、配图异步追上来，而是取诗+取图全程显示骨架，待 `fetchSceneImage` 最终结果回来后**一次性 `renderPostcard(诗词+图)`**。
+
+**改动**（`src/main.js`）：
+- `drawNew`：去掉「先 `renderPostcard(poem,'','none')` 显诗词 + 回调 `updateImageOnly` 渐进换图」两步法，改为先留骨架、await 双源最终结果、再一次性渲染整卡（全失败渲染诗词 + 单色占位）
+- `swapImage`：去掉 `onPicsum`/`onLoremFlickr` 渐进回调，改为保留当前图、等双源最终结果回来再一次性 `updateImageOnly` 换图
+- 删除 `applyScene` / `SCENE_RANK` 死代码（`drawNew`/`swapImage` 不再需要「低优先级不覆盖高优先级」的渐进守卫）
+
+**未动**：双源并发时序、单 tag 随机池、四维意境提取、`composeCard`、请求纪律（仍 1 次 random + 2 次图）。
 
 ### v4.7.0 (2026-09-04) — 移除 Pollinations，LoremFlickr 单 tag 随机池
 
@@ -373,7 +382,7 @@ python scripts/serve.py 8080
 
 ### v4.4.0 (2026-09-03) — 双源并发渐进增强
 
-把"等图回来才渲染卡片"改成"诗词毫秒级可见 + 图渐进增强"，是用户体验质变的一次架构级调整。
+把"等图回来才渲染卡片"改成"诗词毫秒级可见 + 图渐进增强"，是用户体验质变的一次架构级调整；**v4.7.1 又按需求回退为「等图一起出」**（诗词与配图一次性渲染，见更新日志）。
 
 **问题**：旧实现是 `await fetchSceneImage()` 串行拿图再 `renderPostcard()`，诗词出现时间 = Picsum 出图时间（约 1.5s）。用户进入页面先看到骨架（无诗词），等图回来才看到完整卡片——诗词出现太晚。
 

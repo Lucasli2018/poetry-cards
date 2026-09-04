@@ -76,18 +76,6 @@ let curImg = null;        // 当前背景图（HTMLImageElement，已 CORS）
 let curImgUrl = null;
 let curSource = 'none';   // 图源：LoremFlickr / Picsum / none
 
-// v4.6: 图源优先级(高→低), 用于「不降级」保护
-const SCENE_RANK = { none: 0, Picsum: 1, LoremFlickr: 2 };
-// 提交一张场景图: seq/poem 校验 + 不降级(低优先级不覆盖高优先级)
-function applyScene(r, poemRef, seqRef) {
-  if (seqRef !== _seq) return;
-  if (curPoem !== poemRef) return;
-  if ((SCENE_RANK[r.source] || 0) < (SCENE_RANK[curSource] || 0)) return;
-  curImg = r.img;
-  curImgUrl = r.url;
-  curSource = r.source;
-  updateImageOnly(r.url, r.source, r.img);
-}
 let degraded = false;     // 是否已降级到本地库
 let localFirst = true;    // 「经典诗词」模式：默认开启，只走本地 70 首，不发远程
 
@@ -349,11 +337,8 @@ function updateImageOnly(url, source, readyImg) {
 }
 
 // 单独换图：复用当前诗词，换新 seed 重新取配图；遵守请求纪律（_busy / _seq）。
-// v4.7.0: 与 drawNew 同样走双源并发渐进增强 — LoremFlickr 先到先替换, Picsum 兜底
-// v4.5.1: 关键修复 —
-//   · 双源回调里 seq 校验不通过 → return (丢弃旧回调) — 但**不动 DOM**, 保留原图
-//   · 全失败 → 不动 DOM, 保留原图 + toast "已保留原图"
-//   · updateImageOnly 接受 r.img (已 loaded), 直接复用 URL 避免重新加载
+// v4.7.1: 等双源最终结果回来再一次性替换配图(保留诗词) — 不再渐进替换;
+//   全失败 → 保留原图 + toast "已保留原图"
 async function swapImage() {
   if (!curPoem || _busy) return;
   const seq = ++_seq;
@@ -362,32 +347,25 @@ async function swapImage() {
   _busy = true;
   const btn = els.stage.querySelector('.pc-swap-img');
   btn?.classList.add('is-busy');
-  const hadImg = !!curImg;       // v4.5.1: 换图前是否已有图, 决定失败行为
   try {
     const seed = Date.now() + Math.floor(Math.random() * 1e6);
-    let picsumShown = false;
-    let loremShown = false;
-    const finalResult = await fetchSceneImage(curPoem, {
-      seed,
-      onPicsum: (r) => { if (seq !== _seq) return; picsumShown = true; applyScene(r, curPoem, seq); },
-      onLoremFlickr: (r) => { if (seq !== _seq) return; loremShown = true; applyScene(r, curPoem, seq); },
-    });
+    // 不传渐进回调: 保留当前图, 等双源最终结果回来再一次性替换
+    const finalResult = await fetchSceneImage(curPoem, { seed });
     if (seq !== _seq) return;
 
-    // 反馈: LoremFlickr=意境图 / Picsum=配图; 全失败保留原图
-    if (loremShown) toast('已换意境图');
-    else if (picsumShown) toast('已换一张配图');
-    else {
-      // v4.5.1: 全失败 — 保留原图
-      if (hadImg) toast('配图暂不可用，已保留原图');
-      else toast('配图暂不可用，请稍后再试');
+    if (finalResult.source !== 'none') {
+      curImg = finalResult.img;
+      curImgUrl = finalResult.url;
+      curSource = finalResult.source;
+      updateImageOnly(finalResult.url, finalResult.source, finalResult.img);
+      toast(finalResult.source === 'LoremFlickr' ? '已换意境图' : '已换一张配图');
+    } else {
+      toast('配图暂不可用，已保留原图');
     }
   } catch (e) {
     if (e && (e.name === 'AbortError' || e.code === 20)) return;
     console.error(e);
-    // v4.5.1: 异常 — 同样保留原图(若有)
-    if (hadImg) toast('换图失败，已保留原图');
-    else toast('换图失败，请稍后重试');
+    toast('换图失败，已保留原图');
   } finally {
     if (seq === _seq) {
       _busy = false;
@@ -397,13 +375,13 @@ async function swapImage() {
 }
 
 // ── 核心：换一张（1 次 random + 双源并发图） ─────────────────
-// v4.7.0: 首屏毫秒级策略 — 诗词出现时间从「等图回来」提前到「拿到诗就显示」
-//   T+0ms    → showSkeleton() 骨架(无诗词)  [向后兼容, 老 fallback]
-//   T+0+ms  → 拿到诗 → renderPostcard() 同步拼完整卡片(诗词+字段+纯色图区)
-//            → fetchSceneImage 双源并发(LoremFlickr + Picsum 同时发起)
-//   T+~1500ms → Picsum 兜底回调 → updateImageOnly 局部替换 <img src>
-//   T+~4000ms → LoremFlickr 主源回调 → 再次局部替换 <img src>(主题更贴合)
-//   失败/超时 → 不替换, 保留已出的图(或纯色占位)
+// v4.7.1: 诗词与配图同时呈现 — 先留骨架(showSkeleton), 拿到诗后继续等图,
+//   待 fetchSceneImage 最终结果回来, 再一次性 renderPostcard(诗词+图);
+//   不再让诗词毫秒级先显、配图异步追上来。
+//   T+0ms    → showSkeleton() 骨架(无诗词、无图)
+//   T+0+ms  → 拿到诗(本地优先/远程) → 继续等图
+//   T+~1500ms → LoremFlickr 主源先到(或 Picsum 兜底) → 一次性渲染整卡(诗词+图)
+//   失败/超时 → 渲染诗词 + 单色占位(.postcard-media--empty)
 async function drawNew() {
   // ① 同步锁：任何来源的二次触发直接丢弃
   if (_busy) return;
@@ -449,38 +427,30 @@ async function drawNew() {
       throw new Error('POEM_EMPTY');
     }
 
-    // ── 拿到诗 → 同步拼完整卡片(诗词+字段+纯色图区背景) ──
-    //   这是 v4.4.0 的关键变化: 诗词不再等图回来才出现
-    //   v4.5.1: 首屏(初次进入或从未有图)走空 url → 单色占位; 若用户连续换诗,
-    //     上一张的 curImg 保留作 hadImg, fetchSceneImage 失败时回退用旧 img
-    const hadImg = !!curImg;
-    const prevImg = curImg;          // 备份旧 img, 全失败时保留显示
-    const prevImgUrl = curImgUrl;
+    // ── 等图一起出（v4.7.1）──
+    //   诗词与配图同时呈现: 不先显诗词、再异步追图; 而是先留骨架(showSkeleton),
+    //   待 fetchSceneImage 拿到最终结果(或全失败)后, 一次性 renderPostcard。
+    //   取诗期间已显示骨架, 故此处不再提前 renderPostcard。
     curPoem = poem;
     curImg = null;
     curImgUrl = '';
     curSource = 'none';
-    renderPostcard(poem, '', 'none');   // 空 url → 走 .postcard-media--empty 单色占位
 
-    // ── 请求 2：双源并发取图 ──
-    //   回调里 seq 校验: 期间又触发了换诗, 丢弃旧回调(不动 DOM, 由新 seq 负责)
-    //   v4.5.1: 回调传 r.img (已 loaded), updateImageOnly 复用 URL 避免重新加载
+    // ── 请求 2：双源并发取图（不传渐进回调, 等最终结果一起渲染）──
     const finalResult = await fetchSceneImage(poem, {
       seed: poem.id || seq,
-      onPicsum: (r) => applyScene(r, poem, seq),
-      onLoremFlickr: (r) => applyScene(r, poem, seq),
     });
     if (seq !== _seq) return;
 
-    // 用最终结果覆盖 curSource(可能在 onPicsum/onLoremFlickr 中已更新)
-    //   - 若两张都失败: 上面 hadImg 块已处理保留原图
-    if (finalResult.source !== 'none') {
-      curImg = finalResult.img;
-      curImgUrl = finalResult.url;
-      curSource = finalResult.source;
-    }
-    // 全失败且 hadImg=false: 图区保留单色占位, 给个提示
-    if (finalResult.source === 'none' && !hadImg) {
+    curImg = finalResult.img;
+    curImgUrl = finalResult.url;
+    curSource = finalResult.source;
+
+    // 诗词 + 图 一次性渲染
+    renderPostcard(poem, finalResult.url, finalResult.source);
+
+    // 全失败: 图区单色占位 + 提示文案
+    if (finalResult.source === 'none') {
       if (els.srcNote) els.srcNote.textContent = '配图暂不可用（已用水墨底纹）';
     }
 
